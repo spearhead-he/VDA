@@ -70,6 +70,7 @@ pure_eval==0.2.3
 pycparser==2.22
 pyerfa==2.0.1.5
 Pygments==2.18.0
+pyonset @ git+https://github.com/Christian-Palmroos/PyOnset/@8a31eec2851ccbc7c04c885e9723a8bd49742962
 pyparsing==3.2.0
 python-dateutil==2.9.0.post0
 pytz==2024.2
@@ -79,6 +80,7 @@ pyzmq==26.2.0
 requests==2.32.3
 requests-file==2.1.0
 requests-toolbelt==1.0.0
+scipy==1.14.1
 SecretStorage==3.3.3
 seppy==0.1.16
 six==1.17.0
