@@ -1,0 +1,12 @@
+# Ignore everything
+*
+# Except:
+!README.md
+!LICENCE
+!*.ipynb
+!*.py
+!requirements.txt
+!.gitignore
+# Don't ignore subfolders, unless they contain "venv" in their name
+!*/
+*venv*
