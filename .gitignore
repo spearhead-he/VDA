@@ -2,7 +2,7 @@
 *
 # Except:
 !README.md
-!LICENCE
+!LICENSE
 !*.ipynb
 !*.py
 !requirements.txt
