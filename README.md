@@ -11,7 +11,9 @@ The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of on
 
 The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is a plot of the VDA analysis for each inputted event.
 
-*Tool is still under active development and its results should be handled with caution. Tested in Ubuntu 22.04 with Python version 3.10.12*
+*Tool is still under active development and its results should be handled with caution.* 
+
+*Tested in Ubuntu 22.04 with Python version 3.10.12*
 
 ## How to install
 
@@ -34,4 +36,6 @@ The user should run the cell(s) of the first section and then follow the instruc
 <img align="right" height="80px" src="https://github.com/user-attachments/assets/28c60e00-85b4-4cf3-a422-6f0524c42234"> 
 <img align="right" height="80px" src="https://github.com/user-attachments/assets/854d45ef-8b25-4a7b-9521-bf8bc364246e"> 
 
-This tool is developed for the SPEARHEAD (*SPEcification, Analysis & Re-calibration of High Energy pArticle Data*) project. SPEARHEAD has received funding from the European Union’s Horizon Europe programme under grant agreement No 101135044. The tool reflects only the authors’ view and the European Commission is not responsible for any use that may be made of the information it contains.
+This tool is developed for the SPEARHEAD (*SPEcification, Analysis & Re-calibration of High Energy pArticle Data*) project. SPEARHEAD has received funding from the European Union’s Horizon Europe programme under grant agreement No 101135044. 
+
+The tool reflects only the authors’ view and the European Commission is not responsible for any use that may be made of the information it contains.
