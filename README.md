@@ -17,10 +17,11 @@ The tool utilizes the Pandas module and generates multiple DataFrames during its
 
 ## How to install
 
-1. Download/clone the contents of this repository.
-2. Move to the directory where the code is (unzip the downloaded file, if needed).
-3. *(Optional)* Create a Python virtual environment (e.g., `python -m venv venv_vda_tool`) and activate it (e.g., `source venv_vda_tool/bin/activate`)
+1. [Download this file](https://github.com/spearhead-he/VDA/archive/refs/heads/main.zip) and extract to a folder of your choice (or clone the repository [https://github.com/spearhead-he/VDA](https://github.com/spearhead-he/VDA) if you know how to use `git`).
+2. Within your terminal/command line prompt, move to the directory where the code is.
+3. *(Optional, but recommended)* Create a Python virtual environment (e.g., `python -m venv venv_vda_tool`) and activate it (e.g., `source venv_vda_tool/bin/activate`)
 4. Install the Python dependencies from the *requirements.txt* file with `pip install -r requirements.txt`
+5. Open the Jupyter Notebook by running `jupyter-lab vda_tool.ipynb`
 
 ## How to use
 
