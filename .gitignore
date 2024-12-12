@@ -4,9 +4,11 @@
 !README.md
 !LICENSE
 !*.ipynb
+*checkpoint.ipynb
 !*.py
 !requirements.txt
 !.gitignore
+!*example*
 # Don't ignore subfolders, unless they contain "venv" in their name
 !*/
 *venv*

@@ -6,6 +6,7 @@ WIDGETS_LAYOUT = widgets.Layout(width="auto")
 WIDGETS_STYLE = {"description_width": "initial"}
 
 ############### Reference Times DF ###############
+EVENT_INDEX_NAME = "Event No"
 REF_TIME_COLNAME = "Reference Time"
 START_TIME_COLNAME = "Start Time"
 END_TIME_COLNAME = "End Time"
@@ -32,8 +33,8 @@ AVAILABLE_ONSET_METHODS = {
                 "description": "s:",
                 "disabled": False,
                 "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT
-            }
+                "layout": WIDGETS_LAYOUT,
+            },
         },
         "n": {
             "widget": widgets.IntSlider,
@@ -45,8 +46,8 @@ AVAILABLE_ONSET_METHODS = {
                 "description": "n:",
                 "disabled": False,
                 "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT
-            }
+                "layout": WIDGETS_LAYOUT,
+            },
         },
         "bg_start": {
             "widget": widgets.IntSlider,
@@ -58,8 +59,8 @@ AVAILABLE_ONSET_METHODS = {
                 "description": "Point index to start the background sampling:",
                 "disabled": False,
                 "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT
-            }
+                "layout": WIDGETS_LAYOUT,
+            },
         },
         "bg_end": {
             "widget": widgets.IntSlider,
@@ -71,9 +72,9 @@ AVAILABLE_ONSET_METHODS = {
                 "description": "Point index to end the background sampling:",
                 "disabled": False,
                 "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT
-            }
-        }
+                "layout": WIDGETS_LAYOUT,
+            },
+        },
     }
 }
 
@@ -94,7 +95,4 @@ VIEWINGS_HIERARCHY = ["sun", "north", "south", "asun", "omni"]
 C = 299_792_458
 AU_TO_M_RATIO = 1.495978707e11
 
-M_REST = {
-    "protons": 938.27,
-    "electrons": 0.511
-}
+M_REST = {"protons": 938.27, "electrons": 0.511}
