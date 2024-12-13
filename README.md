@@ -13,7 +13,7 @@ The tool utilizes the Pandas module and generates multiple DataFrames during its
 
 *Tool is still under active development and its results should be handled with caution.* 
 
-*Tested in Ubuntu 22.04 with Python version 3.10.12 and MacOS 15.1.1 with Python *
+*Tested in Ubuntu 22.04 with Python version 3.10.12, and MacOS 15.1.1 with Python 3.10.16 and 3.12.8*
 
 ## How to install
 
