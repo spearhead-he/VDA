@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/901860658.svg)](https://doi.org/10.5281/zenodo.14441053)
+
 # SPEARHEAD VDA tool
 
 - [About](#about)
