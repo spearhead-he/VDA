@@ -3,6 +3,7 @@
 - [About](#about)
 - [How to install](#how-to-install)
 - [How to use](#how-to-use)
+- [Contributing](#contributing)
 - [Acknowledgement](#acknowledgement)
 
 ## About
@@ -32,6 +33,12 @@ The Notebook is separated into three main sections:
 - Run
 
 The user should run the cell(s) of the first section and then follow the instructions iside the Notebook to properly fill the input forms. The cells of the "Run" section can then be run without changing anything.
+
+## Contributing
+
+Contributions to this tool are very much welcome and encouraged! Contributions can take the form of [issues](https://github.com/spearhead-he/VDA/issues) to report bugs and request new features or [pull requests](https://github.com/spearhead-he/VDA/pulls) to submit new code. 
+
+If you don't have a GitHub account, you can [sign-up for free here](https://github.com/signup), or you can also reach out to us with feedback by sending an email to jan.gieseler@utu.fi.
 
 ## Acknowledgement
 
