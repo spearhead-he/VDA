@@ -2,15 +2,16 @@
 
 # SPEARHEAD VDA tool
 
-- [About](#about)
-- [How to install](#how-to-install)
-- [How to use](#how-to-use)
-- [Contributing](#contributing)
-- [Acknowledgement](#acknowledgement)
+- [SPEARHEAD VDA tool](#spearhead-vda-tool)
+  - [About](#about)
+  - [How to install](#how-to-install)
+  - [How to use](#how-to-use)
+  - [Contributing](#contributing)
+  - [Acknowledgement](#acknowledgement)
 
 ## About
 
-The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Enegergetic Particle (SEP) events. Each event is provided to the tool as a point in time. The user can parameterize the given Notebook and control which particle species are used, the sensor from which they are detected, and the viewings to be considered.
+The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Energetic Particle (SEP) events. Each event is provided to the tool as a point in time. The user can parameterize the given Notebook and control which particle species are used, the sensor from which they are detected, and the viewings to be considered.
 
 The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is a plot of the VDA analysis for each inputted event.
 
