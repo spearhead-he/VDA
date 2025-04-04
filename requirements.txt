@@ -5,7 +5,7 @@ jupyterlab
 matplotlib>=3.6.3
 numpy>=1.24.1
 pandas>=1.5.3
+git+https://github.com/Christian-Palmroos/PyOnset/
 solo-epd-loader>=0.3.7
 sunpy>=6.0.4
 seppy>=0.1.16
-pyonset @ git+https://github.com/Christian-Palmroos/PyOnset/@8a31eec2851ccbc7c04c885e9723a8bd49742962
