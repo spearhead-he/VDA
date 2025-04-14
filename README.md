@@ -24,9 +24,10 @@ The tool utilizes the Pandas module and generates multiple DataFrames during its
 1. This tool requires a recent Python (>=3.10) installation. [Following SunPy's approach, we recommend installing Python via miniforge (click for instructions).](https://docs.sunpy.org/en/stable/tutorial/installation.html#installing-python)
 2. [Download this file](https://github.com/spearhead-he/VDA/archive/refs/heads/main.zip) and extract to a folder of your choice (or clone the repository [https://github.com/spearhead-he/VDA](https://github.com/spearhead-he/VDA) if you know how to use `git`).
 3. Open a terminal or the miniforge prompt and move to the directory where the code is.
-4. *(Optional, but recommended)* Create a new virtual environment (e.g., `conda create --name vda python=3.12`, or `python -m venv venv_vda_tool` if you don't use miniforge/conda) and activate it (e.g., `conda activate vda`, or `source venv_vda_tool/bin/activate` if you don't use miniforge/conda).
-5. Install the Python dependencies from the *requirements.txt* file with `pip install -r requirements.txt`
-6. Open the Jupyter Notebook by running `jupyter-lab vda_tool.ipynb`
+4. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
+5. If you **don't** have `git` installed (try executing it), install it with `conda install conda-forge::git`.
+6. Install the Python dependencies from the *requirements.txt* file with `pip install -r requirements.txt`
+7. Open the Jupyter Notebook by running `jupyter-lab vda_tool.ipynb`
 
 ## How to use
 
