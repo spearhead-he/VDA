@@ -1,98 +1,133 @@
-from ipywidgets import widgets
-from os import getcwd
+from datetime import datetime, timezone
 
-############### Widgets ###############
-WIDGETS_LAYOUT = widgets.Layout(width="auto")
-WIDGETS_STYLE = {"description_width": "initial"}
 
-############### Reference Times DF ###############
-EVENT_INDEX_NAME = "Event No"
-REF_TIME_COLNAME = "Reference Time"
-START_TIME_COLNAME = "Start Time"
-END_TIME_COLNAME = "End Time"
+class VDA_parameters:
 
-############### Particle Data ###############
-DATA_PATH = f"{getcwd()}/particle_data"
-PROTON_COLUMN_PREFIX = "H_Flux"
-ELECTRON_COLUMN_PREFIX = "Electron_Flux"
+    def __init__(self):
+        self.input_type: int = 0
+        # self.date_start: datetime = datetime(2021, 5, 22, 19, 45, tzinfo=timezone.utc)
+        # self.date_end: datetime = datetime(2021, 5, 23, 2, 45, tzinfo=timezone.utc)
+        self.date_start: datetime = datetime(2021, 5, 22, 19, 45)
+        self.date_end: datetime = datetime(2021, 5, 23, 2, 45)
+        self.date_range_filepath: str = "examples/datetime_range_example.csv"
+        self.reference_times_filepath: str = "examples/reference_times_example.csv"
+        self.bg_hours_prior: int = 2
+        self.bg_hours_after: int = 5
+        self.load_data: bool = False
+        self.load_data_filepath: str = ""
+        self.save_data: bool = False
+        self.save_data_filepath: str = ""
+        self.sensors_tt: list = [True for _ in self.AVAILABLE_SENSORS]
+        self.particles_tt: list = [True for _ in self.AVAILABLE_PARTICLES]
+        self.sensors_particles_tt: dict = {
+            s: [True for _ in self.AVAILABLE_SENSORS_PARTICLES[s]]
+            for s in self.AVAILABLE_SENSORS_PARTICLES.keys()
+        }
+        # self.sensors_particles_tt: dict = {
+        #     "het": [False, False],
+        #     "ept": [False, True]
+        # }
+        self.viewings_tt: list = [True for _ in self.AVAILABLE_VIEWINGS]
+        # self.viewings_tt: list = [True] + [False for _ in self.AVAILABLE_VIEWINGS[1:]]
+        self.resample_frequency: str = ""
+        self.group_sizes: dict = {
+            s: {
+                p: 2
+                for p in ps
+            } 
+            for s, ps in self.AVAILABLE_SENSORS_PARTICLES.items()
+        }
+        self.onset_method: str = list(self.AVAILABLE_ONSET_METHODS.keys())[0]
+        self.onset_method_parameters: dict = {
+            k: v["default"]
+            for k, v in self.AVAILABLE_ONSET_METHODS[self.onset_method].items()
+        }
+        self.onset_selection: int = 0
+        self.view_dfs: bool = True
 
-AVAILABLE_SENSORS = ["het", "ept"]
-AVAILABLE_PARTICLES = ["protons", "electrons"]
-AVAILABLE_VIEWINGS = ["sun", "asun", "north", "south", "omni"]
+    @property
+    def sensors(self):
+        return [s for i, s in enumerate(self.AVAILABLE_SENSORS) if self.sensors_tt[i]]
 
-############### Particle Data ###############
-AVAILABLE_ONSET_METHODS = {
-    "sigma": {
-        "s": {
-            "widget": widgets.IntSlider,
-            "widget_params": {
-                "value": 3,
-                "min": 1,
-                "max": 5,
-                "step": 1,
-                "description": "s:",
-                "disabled": False,
-                "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT,
-            },
-        },
-        "n": {
-            "widget": widgets.IntSlider,
-            "widget_params": {
-                "value": 3,
-                "min": 1,
-                "max": 5,
-                "step": 1,
-                "description": "n:",
-                "disabled": False,
-                "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT,
-            },
-        },
-        "bg_start": {
-            "widget": widgets.IntSlider,
-            "widget_params": {
-                "value": 0,
-                "min": 0,
-                "max": 100,
-                "step": 1,
-                "description": "Point index to start the background sampling:",
-                "disabled": False,
-                "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT,
-            },
-        },
-        "bg_end": {
-            "widget": widgets.IntSlider,
-            "widget_params": {
-                "value": 12,
-                "min": 0,
-                "max": 100,
-                "step": 1,
-                "description": "Point index to end the background sampling:",
-                "disabled": False,
-                "style": WIDGETS_STYLE,
-                "layout": WIDGETS_LAYOUT,
-            },
-        },
-    }
-}
+    @property
+    def particles(self):
+        return [
+            p for i, p in enumerate(self.AVAILABLE_PARTICLES) if self.particles_tt[i]
+        ]
 
-# onset_method = "poisson_cusum_bootstrap"
-# onset_method_params = {
-#     "bg_start": 0,
-#     "bg_end": 12,
-#     "bootstraps": 1000,
-#     "cusum_minutes": 60,
-#     "sample_size": 0.75,
-#     "limit_averaging": "4 min"
-# }
+    @property
+    def sensors_particles(self):
+        return {
+            s: [p for i, p in enumerate(self.AVAILABLE_SENSORS_PARTICLES[s]) if tt[i]]
+            for s, tt in self.sensors_particles_tt.items()
+        }
 
-############### Onset Selection ###############
-VIEWINGS_HIERARCHY = ["sun", "north", "south", "asun", "omni"]
+    @property
+    def viewings(self):
+        return [v for i, v in enumerate(self.AVAILABLE_VIEWINGS) if self.viewings_tt[i]]
 
-############### VDA ###############
-C = 299_792_458
-AU_TO_M_RATIO = 1.495978707e11
+    @property
+    def AVAILABLE_SENSORS(self):
+        return ["het", "ept"]
 
-M_REST = {"protons": 938.27, "electrons": 0.511}
+    @property
+    def AVAILABLE_PARTICLES(self):
+        return ["protons", "electrons"]
+
+    @property
+    def AVAILABLE_SENSORS_PARTICLES(self):
+        return {
+            "het": ["protons", "electrons"],
+            "ept": ["protons", "electrons"]
+        }
+
+    @property
+    def AVAILABLE_VIEWINGS(self):
+        return ["sun", "asun", "north", "south", "omni"]
+
+    @property
+    def AVAILABLE_ONSET_METHODS(self):
+        return {
+            "sigma": {
+                "s": {
+                    "type": int,
+                    "min": 1,
+                    "max": 5,
+                    "default": 3,
+                    "description": "Threshold (<this parameter>*<standard deviation>):",
+                },
+                "n": {
+                    "type": int,
+                    "min": 1,
+                    "max": 5,
+                    "default": 3,
+                    "description": "Number of consecutive points that should cross the threshold:",
+                },
+                "bg_start": {
+                    "type": int,
+                    "min": 0,
+                    "max": 9999,
+                    "default": 0,
+                    "description": "Point index to start the background sampling:",
+                },
+                "bg_end": {
+                    "type": int,
+                    "min": 1,
+                    "max": 10000,
+                    "default": 12,
+                    "description": "Point index to end the background sampling:",
+                },
+            }
+        }
+
+# ############### Particle Data ###############
+
+# # onset_method = "poisson_cusum_bootstrap"
+# # onset_method_params = {
+# #     "bg_start": 0,
+# #     "bg_end": 12,
+# #     "bootstraps": 1000,
+# #     "cusum_minutes": 60,
+# #     "sample_size": 0.75,
+# #     "limit_averaging": "4 min"
+# # }
