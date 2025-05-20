@@ -641,135 +641,6 @@ class VDA:
         plt.tight_layout()
         plt.show()
 
-    def select_onsets(self):
-        if self.parameters.onset_selection == 0:
-            # Use all
-            self.chosen_onsets = None
-        elif self.parameters.onset_selection == 1:
-            # Interactive
-            # from ipywidgets import Button
-            # widget_btns = [Button(description=viewing) for viewing in [w.description for w in list_wgt_chk_viewings if w.value]]
-            # widget_btns.append(Button(description="none"))
-
-            # plt.ion()
-            # # fig, ax = plt.subplots(figsize=(10, 8))
-            # fig, ax = plt.subplots()
-            # # line1, = ax.plot([pd.Timestamp('2020-07-21 05:15:00'), pd.Timestamp('2020-07-21 05:20:00')], [1, 10])
-            # line1, = ax.plot([], [])
-
-            # def wait_for_change(*widget_btns):
-            #     future = asyncio.Future()
-            #     def getvalue(change):
-            #         future.set_result(change.description)
-            #         for btn in widget_btns:
-            #             btn.on_click(getvalue, remove=True)
-            #         # we need to free up the binding to getvalue to avoid an IvalidState error
-            #         # buttons don't support unobserve
-            #         # so use `remove=True`
-            #     for btn in widget_btns:
-            #         btn.on_click(getvalue)
-            #     return future
-
-            # async def select():
-            #     df_selections = pd.DataFrame({})
-            #     for index_event, df_event in df_options.groupby(level=0):
-            #         for sensor in [w.description for w in list_wgt_chk_sensors if w.value]:
-            #             for particle in [w.description for w in list_wgt_chk_particles if w.value]:
-            #                 if particle == "protons":
-            #                     particle_prefix = PROTON_COLUMN_PREFIX
-            #                 elif particle == "electrons":
-            #                     particle_prefix = ELECTRON_COLUMN_PREFIX
-            #                 for channel, df_channel in df_event.loc[index_event, sensor, particle, particle_prefix].groupby(level=0):
-            #                     channel_low = (channels := channel.split("-"))[0]
-            #                     channel_high = channels[1]
-            #                     # viewings = []
-            #                     # widget_btns = []
-            #                     for viewing, df_viewing in df_channel.groupby(level=1):
-            #                         plot_onset(df_grouped.loc[index_event][sensor, particle, viewing, particle_prefix, channel],
-            #                                 df_channel.loc[channel, viewing]["Onset Time"].to_pydatetime(),
-            #                                 df_channel.loc[channel, viewing]["Background Start"].to_pydatetime(),
-            #                                 df_channel.loc[channel, viewing]["Background End"].to_pydatetime(),
-            #                                 f"Event {index_event}, {sensor}/{particle}, {df_energies.loc[sensor, channel_low]['Low Energy']:.2f}-{df_energies.loc[sensor, channel_high]['High Energy']:.2f} MeV, {viewing}")
-            #                     #     series = df_grouped.loc[index_event][sensor, particle, viewing, particle_prefix, channel]
-            #                     #     onset_time = df_channel.loc[channel, viewing]["Onset Time"].to_pydatetime()
-            #                     #     bg_start_time = df_channel.loc[channel, viewing]["Background Start"].to_pydatetime()
-            #                     #     bg_end_time = df_channel.loc[channel, viewing]["Background End"].to_pydatetime()
-            #                     #     title = f"Event {index_event}, {sensor}/{particle}, {df_energies.loc[sensor, channel_low]['Low Energy']:.2f}-{df_energies.loc[sensor, channel_high]['High Energy']:.2f} MeV, {viewing}"
-            #                     #     # plt.ion()
-            #                     #     # fig, ax = plt.subplots(figsize=(10, 8))
-            #                     #     # ax.plot(series.fillna(0))
-            #                     #     # ax = series.fillna(0).plot(title=title,
-            #                     #     #        logy=True,
-            #                     #     #     #    ylim=(1e-4, 1e4),
-            #                     #     #        label="Data")
-            #                     #     series = series.fillna(0)
-            #                     #     line1.set_xdata(list(series.index))
-            #                     #     line1.set_ydata(list(series))
-            #                     #     # ax.set_title(title)
-            #                     #     # ax.set_ylim((ylim := ax.get_ylim())[0]*0.01, ylim[1]*100)
-            #                     #     # ax.axvline(onset_time, linestyle='--', label="Onset time")
-            #                     #     # ylim_top = ax.get_ylim()[1]
-            #                     #     # ax.fill_between([bg_start_time, bg_end_time], 0, ylim_top, color="green", alpha=0.25, label="BG sample")
-            #                     #     # ax.set_ylim(top=ylim_top)
-            #                     #     # ax.legend()
-            #                     #     fig.canvas.draw()
-            #                     #     fig.canvas.flush_events()
-            #                     #     # plt.axes(ax)
-            #                     #     # plt.tight_layout()
-            #                     #     # plt.show()
-            #                     #     # viewings.append(viewing)
-            #                     #     # widget_btns.append(Button(description=viewing))
-            #                     # # viewings.append("none")
-            #                     # # selection = None
-            #                     # # widget_btns.append(Button(description="none"))
-            #                     # selection = await wait_for_change(*widget_btns)
-            #                     # print(selection)
-            #         #             break
-            #         #         break
-            #         #     break
-            #         # break
-
-            # asyncio.create_task(select())
-            # HBox(widget_btns)
-            pass
-        elif self.parameters.onset_selection == 2:
-            # Custom list
-            df_selections = pd.DataFrame({})
-            for index_event, df_event in self.df_options.groupby(level=0):
-                for sensor, particles in self.parameters.sensors_particles.items():
-                    for particle in particles:
-                        if particle == "protons":
-                            particle_prefix = self.PROTON_COLUMN_PREFIX
-                        elif particle == "electrons":
-                            particle_prefix = self.ELECTRON_COLUMN_PREFIX
-                        for channel, df_channel in df_event.loc[
-                            index_event, sensor, particle, particle_prefix
-                        ].groupby(level=0):
-                            channel_low = (channels := channel.split("-"))[0]
-                            channel_high = channels[1]
-                            for viewing, df_viewing in df_channel.groupby(level=1):
-                                self._plot_onset(
-                                    self.df_grouped.loc[index_event][
-                                        sensor,
-                                        particle,
-                                        viewing,
-                                        particle_prefix,
-                                        channel,
-                                    ],
-                                    df_channel.loc[channel, viewing][
-                                        "Onset Time"
-                                    ].to_pydatetime(),
-                                    df_channel.loc[channel, viewing][
-                                        "Background Start"
-                                    ].to_pydatetime(),
-                                    df_channel.loc[channel, viewing][
-                                        "Background End"
-                                    ].to_pydatetime(),
-                                    f"Event {index_event}, {sensor}/{particle}, {self.df_energies.loc[sensor, channel_low]['Low Energy']:.2f}-{self.df_energies.loc[sensor, channel_high]['High Energy']:.2f} MeV, {viewing}",
-                                )
-
-            assert False
-
     def construct_energy_channels_characteristics(self):
         self.df_channels_chars = pd.DataFrame({})
         for sensor, particles in self.parameters.sensors_particles.items():
@@ -836,96 +707,25 @@ class VDA:
                 * self.AU_TO_M_RATIO
                 / self.C
             )
-            for sensor, particles in self.parameters.sensors_particles.items():
-                for particle in particles:
-                    try:
-                        if particle == "protons":
-                            particle_prefix = self.PROTON_COLUMN_PREFIX
-                        elif particle == "electrons":
-                            particle_prefix = self.ELECTRON_COLUMN_PREFIX
-                        for channel, df_channel in df_event.loc[
-                            index_event, sensor, particle, particle_prefix
-                        ].groupby(level=0):
-                            channel_viewings = list(df_channel.loc[channel].index)
-                            if len(channel_viewings) == 1:
-                                if (
-                                    self.chosen_onsets is None
-                                    or self.chosen_onsets.loc[
-                                        index_event,
-                                        sensor,
-                                        particle,
-                                        particle_prefix,
-                                        channel,
-                                    ]["Viewing"]
-                                    == channel_viewings[0]
-                                ):
-                                    # if use every onset or the viewing matches the chosen
-                                    vda_points.append(
-                                        (
-                                            self.df_channels_chars.loc[
-                                                sensor, particle, channel
-                                            ]["Inverse Beta"],
-                                            df_channel.loc[
-                                                channel, channel_viewings[0]
-                                            ]["Onset Time"]
-                                            .to_pydatetime()
-                                            .timestamp(),
-                                        )
-                                    )
-                            else:
-                                # Multiple viewings available
-                                if self.chosen_onsets is None:
-                                    # Use every onset (default hierarchy of choice)
-                                    for viewing in self.VIEWINGS_HIERARCHY:
-                                        if viewing in channel_viewings:
-                                            vda_points.append(
-                                                (
-                                                    self.df_channels_chars.loc[
-                                                        sensor, particle, channel
-                                                    ]["Inverse Beta"],
-                                                    df_channel.loc[channel, viewing][
-                                                        "Onset Time"
-                                                    ]
-                                                    .to_pydatetime()
-                                                    .timestamp(),
-                                                )
-                                            )
-                                            break
-                                elif (
-                                    self.chosen_onsets.loc[
-                                        index_event,
-                                        sensor,
-                                        particle,
-                                        particle_prefix,
-                                        channel,
-                                    ]["Viewing"]
-                                    in channel_viewings
-                                ):
-                                    # Chosen viewing exists
-                                    vda_points.append(
-                                        (
-                                            self.df_channels_chars.loc[
-                                                sensor, particle, channel
-                                            ]["Inverse Beta"],
-                                            df_channel.loc[
-                                                channel,
-                                                self.chosen_onsets.loc[
-                                                    index_event,
-                                                    sensor,
-                                                    particle,
-                                                    particle_prefix,
-                                                    channel,
-                                                ]["Viewing"],
-                                            ]["Onset Time"]
-                                            .to_pydatetime()
-                                            .timestamp(),
-                                        )
-                                    )
-                                else:
-                                    # Consider throwing warning (Chosen viewing not available)
-                                    pass
-                    except KeyError:
-                        continue
+            for i, row in self.parameters.selected_onsets.loc[index_event].iterrows():
+                if row["Viewing"] is None:
+                    continue
+                sensor, particle, particle_prefix, channel = i
+                vda_points.append(
+                    (self.df_channels_chars.loc[
+                        sensor, particle, channel
+                    ]["Inverse Beta"],
+                    self.df_onsets_existing.loc[
+                        index_event,
+                        sensor,
+                        particle,
+                        row["Viewing"],
+                        particle_prefix,
+                        channel
+                    ]["Onset Time"]
+                    .to_pydatetime()
+                    .timestamp())
+                )
 
             if len(vda_points) < 2:
                 # Not enough points for the linear regression
@@ -999,20 +799,19 @@ class VDA:
             plt.show()
 
     def plot_bg_selection(self):
-        fig, ax = plt.subplots(figsize=(10, 8))
-
         for event_no, event in self.df_grouped.groupby(level=0):
+            fig, ax = plt.subplots(figsize=(10, 8))
             temp_df = event.droplevel(0)
             plt.plot(temp_df)
-        plt.fill_betweenx(
-            [0, 1e10],
-            self.df_grouped.loc[1].index[self.parameters.onset_method_parameters["bg_start"]],
-            self.df_grouped.loc[1].index[self.parameters.onset_method_parameters["bg_end"]],
-            color="green",
-            alpha=0.3)
+            plt.fill_betweenx(
+                [0, 1e10],
+                self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_start"]],
+                self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_end"]],
+                color="green",
+                alpha=0.3)
 
-        ax.set_ylabel("Flux")
-        ax.set_yscale("log")
-        ax.set_ylim((1e0, 1e6))
-        ax.set_xlabel("Time")
-        plt.show()
+            ax.set_ylabel("Flux")
+            ax.set_yscale("log")
+            ax.set_ylim((1e0, 1e6))
+            ax.set_xlabel("Time")
+            plt.show()
