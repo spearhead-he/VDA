@@ -5,8 +5,6 @@ class VDA_parameters:
 
     def __init__(self):
         self.input_type: int = 0
-        # self.date_start: datetime = datetime(2021, 5, 22, 19, 45, tzinfo=timezone.utc)
-        # self.date_end: datetime = datetime(2021, 5, 23, 2, 45, tzinfo=timezone.utc)
         self.date_start: datetime = datetime(2021, 5, 22, 19, 45)
         self.date_end: datetime = datetime(2021, 5, 23, 2, 45)
         self.date_range_filepath: str = "examples/datetime_range_example.csv"
@@ -23,12 +21,7 @@ class VDA_parameters:
             s: [True for _ in self.AVAILABLE_SENSORS_PARTICLES[s]]
             for s in self.AVAILABLE_SENSORS_PARTICLES.keys()
         }
-        # self.sensors_particles_tt: dict = {
-        #     "het": [False, False],
-        #     "ept": [False, True]
-        # }
         self.viewings_tt: list = [True for _ in self.AVAILABLE_VIEWINGS]
-        # self.viewings_tt: list = [True] + [False for _ in self.AVAILABLE_VIEWINGS[1:]]
         self.resample_frequency: str = ""
         self.group_sizes: dict = {
             s: {
@@ -43,6 +36,7 @@ class VDA_parameters:
             for k, v in self.AVAILABLE_ONSET_METHODS[self.onset_method].items()
         }
         self.onset_selection: int = 0
+        self.selected_onsets: dict | None = None
         self.view_dfs: bool = True
 
     @property

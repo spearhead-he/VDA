@@ -5,6 +5,7 @@
 !LICENSE
 !*.ipynb
 *checkpoint.ipynb
+*test*.ipynb
 !*.py
 !requirements.txt
 !.gitignore
