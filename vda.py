@@ -600,8 +600,8 @@ class VDA:
             ]
         )
 
-        if self.parameters.view_dfs:
-            return self.df_options
+        # if self.parameters.view_dfs:
+        #     return self.df_options
 
     def _plot_onset(
         self,
@@ -692,7 +692,7 @@ class VDA:
         coverage = solo_kernel.coverage("SOLAR ORBITER")
         print(coverage.iso)
 
-    def plot(self):
+    def plot(self, savefig: bool = True):
         heliocentric = HeliocentricInertial()
         for index_event, df_event in self.df_options.groupby(level=0):
             vda_points = []
@@ -771,7 +771,7 @@ class VDA:
                 color="blue",
                 alpha=0.1,
             )
-            plt.title(f"Event {index_event}")
+            plt.title(f"Event {index_event} ({self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
             plt.xlabel("Inverse Beta")
             plt.ylabel("Time")
             time_formatter = mdates.DateFormatter("%H:%M")
@@ -796,15 +796,27 @@ class VDA:
             )
             plt.legend(bbox_to_anchor=(1, 0.6), loc="upper left")
             plt.tight_layout()
+            if savefig:
+                # date_str = self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')
+                time_start_str = self.df_times.loc[index_event]["Start Time"].strftime("%Y-%m-%d_%H%M")
+                time_end_str = self.df_times.loc[index_event]["End Time"].strftime("%Y-%m-%d_%H%M")
+                date_str = f"{time_start_str}_{time_end_str}"
+                particles_str = "_".join([f'{s}-{p}' for s, ps in self.parameters.sensors_particles.items() for p in ps])
+                freq_str = self.parameters.resample_frequency if self.parameters.resample_frequency != "" else "noresample"
+                filename = f"{date_str}_{particles_str}_{freq_str}.png"
+                plt.savefig(filename)
             plt.show()
 
     def plot_bg_selection(self):
         for event_no, event in self.df_grouped.groupby(level=0):
-            fig, ax = plt.subplots(figsize=(10, 8))
+            _, ax = plt.subplots(figsize=(10, 8))
             temp_df = event.droplevel(0)
             plt.plot(temp_df)
+            bot_lim, top_lim = ax.get_ylim()
+            if bot_lim <= 0:
+                bot_lim = np.nanmin(temp_df.replace(0, np.nan).values)
             plt.fill_betweenx(
-                [0, 1e10],
+                [0, top_lim*10],
                 self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_start"]],
                 self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_end"]],
                 color="green",
@@ -812,6 +824,6 @@ class VDA:
 
             ax.set_ylabel("Flux")
             ax.set_yscale("log")
-            ax.set_ylim((1e0, 1e6))
+            ax.set_ylim(bot_lim/10, top_lim*10)
             ax.set_xlabel("Time")
             plt.show()
