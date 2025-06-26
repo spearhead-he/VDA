@@ -5,8 +5,8 @@ class VDA_parameters:
 
     def __init__(self):
         self.input_type: int = 0
-        self.date_start: datetime = datetime(2021, 5, 22, 19, 45)
-        self.date_end: datetime = datetime(2021, 5, 23, 2, 45)
+        self.date_start: datetime = datetime(2021, 10, 28, 14, 0)
+        self.date_end: datetime = datetime(2021, 10, 28, 20, 0)
         self.date_range_filepath: str = "examples/datetime_range_example.csv"
         self.reference_times_filepath: str = "examples/reference_times_example.csv"
         self.bg_hours_prior: int = 2
@@ -18,11 +18,11 @@ class VDA_parameters:
         self.sensors_tt: list = [True for _ in self.AVAILABLE_SENSORS]
         self.particles_tt: list = [True for _ in self.AVAILABLE_PARTICLES]
         self.sensors_particles_tt: dict = {
-            s: [True for _ in self.AVAILABLE_SENSORS_PARTICLES[s]]
+            s: [True if s == "het" else False for _ in self.AVAILABLE_SENSORS_PARTICLES[s]]
             for s in self.AVAILABLE_SENSORS_PARTICLES.keys()
         }
-        self.viewings_tt: list = [True for _ in self.AVAILABLE_VIEWINGS]
-        self.resample_frequency: str = ""
+        self.viewings_tt: list = [True if v == "sun" else False for v in self.AVAILABLE_VIEWINGS]
+        self.resample_frequency: str = "5min"
         self.group_sizes: dict = {
             s: {
                 p: 2
