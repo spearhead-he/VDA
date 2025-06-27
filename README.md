@@ -1,4 +1,5 @@
 [![DOI](https://zenodo.org/badge/901860658.svg)](https://doi.org/10.5281/zenodo.14441053)
+[![pytest](https://github.com/spearhead-he/VDA/actions/workflows/pytest.yml/badge.svg?branch=main)](https://github.com/spearhead-he/VDA/actions/workflows/pytest.yml)
 
 # SPEARHEAD VDA tool
 
