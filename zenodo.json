@@ -1,0 +1,24 @@
+{
+    "description": "<p>This repository contains a Python tool that performs Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events. It is developed within the <a href=\"https://spearhead-he.eu\">SPEARHEAD (SPEcification, Analysis & Re-calibration of High Energy pArticle Data)</a> project.</p>",
+    "license": "BSD-3-Clause", 
+    "title": "SPEARHEAD VDA tool", 
+    "grants": [
+        {
+            "id": "10.13039/501100000780::101135044"
+        }
+    ], 
+    "upload_type": "software", 
+    "creators": [
+        {
+            "orcid": "0000-0003-0490-2717", 
+            "affiliation": "National Observatory of Athens", 
+            "name": "Vasalos, Georgios"
+        },
+        {
+            "orcid": "0000-0003-1848-7067", 
+            "affiliation": "University of Turku", 
+            "name": "Gieseler,  Jan"
+        }
+    ], 
+    "access_right": "open"
+}
