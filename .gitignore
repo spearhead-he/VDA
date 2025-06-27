@@ -146,6 +146,8 @@ particle_data/
 *.pkl
 
 # output png files
-*.png
+./*.png
+output/*.png
+outputs/*.png
 
 *venv*
