@@ -692,7 +692,7 @@ class VDA:
         coverage = solo_kernel.coverage("SOLAR ORBITER")
         print(coverage.iso)
 
-    def plot(self, savefig: bool = True):
+    def plot(self, savefig: bool = True, returnfig: bool = False):
         heliocentric = HeliocentricInertial()
         for index_event, df_event in self.df_options.groupby(level=0):
             vda_points = []
@@ -806,6 +806,8 @@ class VDA:
                 filename = f"{date_str}_{particles_str}_{freq_str}.png"
                 plt.savefig(filename)
             plt.show()
+            if returnfig:
+                return fig
 
     def plot_bg_selection(self):
         for event_no, event in self.df_grouped.groupby(level=0):
