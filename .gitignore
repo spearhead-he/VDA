@@ -142,3 +142,10 @@ dmypy.json
 
 # data files
 particle_data/
+
+*.pkl
+
+# output png files
+*.png
+
+*venv*
