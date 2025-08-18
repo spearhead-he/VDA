@@ -1,0 +1,19 @@
+# YAML 1.2
+# Metadata for citation of this software according to the CFF format (https://citation-file-format.github.io/)
+cff-version: 1.0.3
+message: If you use this software, please cite it using these metadata.
+title: 'SPEARHEAD VDA tool'
+doi: 10.5281/zenodo.15744668
+authors:
+- given-names: George
+  family-names: Vasalos
+  affiliation: National Observatory of Athens
+  orcid: https://orcid.org/0000-0003-0490-2717
+- given-names: Jan
+  family-names: Gieseler
+  affiliation: University of Turku
+  orcid: https://orcid.org/0000-0003-1848-7067
+version: 0.2.0
+date-released: 2025-06-26
+repository-code: https://github.com/spearhead-he/VDA
+license: BSD-3-Clause
