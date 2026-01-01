@@ -44,7 +44,7 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
     - name: Save pytest-mpl report as artifcat
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ matrix.python-version }}-pytest-mpl-report-artifact
         path: "/home/runner/work/vda/tests/report/"
