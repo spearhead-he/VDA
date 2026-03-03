@@ -1,4 +1,3 @@
-import astrospice
 import numpy as np
 import pandas as pd
 import astropy.units as u
@@ -9,7 +8,8 @@ from datetime import timezone, datetime, timedelta
 
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
-from sunpy.coordinates import HeliocentricInertial
+from sunpy.coordinates import spice
+from sunpy.data import cache
 from solo_epd_loader import epd_load
 from pyonset import Onset, BootstrapWindow
 
@@ -687,23 +687,36 @@ class VDA:
             return self.df_channels_chars
 
     def define_spacecraft_parameters(self):
-        kernels = astrospice.registry.get_kernels("solar orbiter", "predict")
-        solo_kernel = kernels[0]
-        coverage = solo_kernel.coverage("SOLAR ORBITER")
-        print(coverage.iso)
+        kernel_urls = [
+            "ck/solo_ANC_soc-sc-fof-ck_20180930-21000101_V03.bc",
+            "ck/solo_ANC_soc-stix-ck_20180930-21000101_V03.bc",
+            "ck/solo_ANC_soc-flown-att_20221011T142135-20221012T141817_V01.bc",
+            "fk/solo_ANC_soc-sc-fk_V09.tf",
+            "fk/solo_ANC_soc-sci-fk_V08.tf",
+            "ik/solo_ANC_soc-stix-ik_V02.ti",
+            "lsk/naif0012.tls",
+            "pck/pck00010.tpc",
+            "sclk/solo_ANC_soc-sclk_20231015_V01.tsc",
+            "spk/de421.bsp",
+            "spk/solo_ANC_soc-orbit-stp_20200210-20301120_280_V1_00288_V01.bsp",
+        ]
+        kernel_urls = [f"https://spiftp.esac.esa.int/data/SPICE/SOLAR-ORBITER/kernels/{url}"
+                    for url in kernel_urls]
+
+        kernel_files = [cache.download(url) for url in kernel_urls]
+
+        spice.initialize(kernel_files)
 
     def plot(self, savefig: bool = True, returnfig: bool = False):
-        heliocentric = HeliocentricInertial()
         for index_event, df_event in self.df_options.groupby(level=0):
             vda_points = []
             t_sun_to_observer = (
-                astrospice.generate_coords(
-                    "SOLAR ORBITER",
+                spice.get_body(
+                    "Solar Orbiter",
                     self.df_times.loc[index_event][self.START_TIME_COLNAME],
+                    spice_frame="SOLO_HEEQ"
                 )
-                .transform_to(heliocentric)
-                .distance.to(u.au)[0]
-                .value
+                .distance.to(u.AU).value
                 * self.AU_TO_M_RATIO
                 / self.C
             )
