@@ -442,13 +442,13 @@ class VDA_nb_displayer:
         self.vda.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
         if self.vda.parameters.onset_selection == 0:
             # Use all (priority by default viewings)
-            for i, row in self.vda.parameters.selected_onsets.iterrows():
+            for i, _ in self.vda.parameters.selected_onsets.iterrows():
                 for v in self.vda.parameters.viewings:
                     try:
                         self.vda.df_options.loc[i+(v,)]
                     except KeyError:
                         continue
-                    row["Viewing"] = v
+                    self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
         elif self.vda.parameters.onset_selection == 1:
             time_formatter = mdates.DateFormatter("%H:%M")
             for event_no, event in self.vda.df_grouped.groupby(level=0):
