@@ -15,21 +15,29 @@ class VDA_parameters:
         self.load_data_filepath: str = ""
         self.save_data: bool = False
         self.save_data_filepath: str = ""
-        self.sensors_tt: list = [True for _ in self.AVAILABLE_SENSORS]
-        self.particles_tt: list = [True for _ in self.AVAILABLE_PARTICLES]
-        self.sensors_particles_tt: dict = {
-            s: [True if s == "het" else False for _ in self.AVAILABLE_SENSORS_PARTICLES[s]]
-            for s in self.AVAILABLE_SENSORS_PARTICLES.keys()
-        }
         self.viewings_tt: list = [True if v == "sun" else False for v in self.AVAILABLE_VIEWINGS]
         self.resample_frequency: str = "5min"
-        self.group_sizes: dict = {
-            s: {
-                p: 2
-                for p in ps
-            } 
-            for s, ps in self.AVAILABLE_SENSORS_PARTICLES.items()
+        self.default_channel_groups: dict = {
+            "protons": {
+                "HET": [
+                    [1, 2, 3],
+                    [10, 11, 12],
+                    [13, 14, 15],
+                    [16, 17, 18],
+                    [19, 20, 21],
+                    [22, 23, 24],
+                    [25, 26, 27],
+                    [28, 29, 30, 31]
+                ]
+            },
+            "electrons": {
+                "HET": [
+                    [0, 1],
+                    [2, 3]
+                ]
+            }
         }
+        self.channel_groups: dict = {}
         self.onset_method: str = list(self.AVAILABLE_ONSET_METHODS.keys())[0]
         self.onset_method_parameters: dict = {
             k: v["default"]
@@ -41,20 +49,25 @@ class VDA_parameters:
 
     @property
     def sensors(self):
-        return [s for i, s in enumerate(self.AVAILABLE_SENSORS) if self.sensors_tt[i]]
+        return set([spec["sensor"] for g in self.channel_groups.values() for spec in g.values()])
 
     @property
     def particles(self):
-        return [
-            p for i, p in enumerate(self.AVAILABLE_PARTICLES) if self.particles_tt[i]
-        ]
+        return list(self.channel_groups.keys())
 
     @property
     def sensors_particles(self):
-        return {
-            s: [p for i, p in enumerate(self.AVAILABLE_SENSORS_PARTICLES[s]) if tt[i]]
-            for s, tt in self.sensors_particles_tt.items()
-        }
+        sp = {}
+        for p, g in self.channel_groups.items():
+            for spec in g.values():
+                sensor = spec["sensor"]
+                try:
+                    sp[sensor].append(p)
+                except KeyError:
+                    sp[sensor] = []
+                    sp[sensor].append(p)
+                sp[sensor] = list(set(sp[sensor]))
+        return sp
 
     @property
     def viewings(self):
@@ -73,6 +86,19 @@ class VDA_parameters:
         return {
             "het": ["protons", "electrons"],
             "ept": ["protons", "electrons"]
+        }
+
+    @property
+    def AVAILABLE_CHANNELS(self):
+        return {
+            "het": {
+                "protons": list(range(36)),
+                "electrons": list(range(4))
+            },
+            "ept": {
+                "protons": list(range(34)),
+                "electrons": list(range(64))
+            }
         }
 
     @property
