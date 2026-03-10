@@ -44,15 +44,13 @@ def test_vda_default():
     # not needed
     vda_displayer.display_load_data_option()
 
+    # load data
+    vda_displayer.construct_energies_df()
+
     # particle selection (not needed)
     vda_displayer.display_particle_selection()
 
-    # load data
     vda.construct_particles_df()
-
-    vda.construct_energies_df()
-
-    vda_displayer.display_groupings()
 
     vda.group_energy_channels()
 

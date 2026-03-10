@@ -66,6 +66,9 @@ class VDA:
     @property
     def M_REST(self):
         return {"protons": 938.27, "electrons": 0.511}
+    
+    def _epd_load(self, *args, **kwargs):
+        return epd_load(*args, **kwargs)
 
     def construct_times_df(self):
         if self.parameters.input_type == 0:
@@ -224,104 +227,22 @@ class VDA:
         if self.parameters.view_dfs:
             return self.df_data
 
-    def construct_energies_df(self):
-        self.df_energies = pd.DataFrame({})
-        df_sensors = []
-        for sensor, particles in self.parameters.sensors_particles.items():
-            
-            if len(particles) == 0:
-                continue
-
-            df_protons, df_electrons, energies = epd_load(
-                sensor=sensor,
-                level="l2",
-                startdate=self.df_times.iloc[0][self.START_TIME_COLNAME],
-                enddate=self.df_times.iloc[0][self.END_TIME_COLNAME],
-                viewing="sun",
-                path=self.DATA_PATH,
-                autodownload=True,
-            )
-            if sensor == "het":
-                flux_cols_name = "H_Flux"
-                energy_bins_cols_name = "H_Bins"
-            elif sensor == "ept":
-                flux_cols_name = "Ion_Flux"
-                energy_bins_cols_name = "Ion_Bins"
-            df_protons = df_protons.rename(
-                lambda x: x.replace(flux_cols_name, self.PROTON_COLUMN_PREFIX),
-                axis="columns",
-            )
-            df_electrons = df_electrons.rename(
-                lambda x: x.replace("Electron_Flux", self.ELECTRON_COLUMN_PREFIX),
-                axis="columns",
-            )
-
-            df_energies_protons = pd.DataFrame(
-                {
-                    "Low Energy": energies[f"{energy_bins_cols_name}_Low_Energy"],
-                    "Bin Width": energies[f"{energy_bins_cols_name}_Width"],
-                },
-                index=df_protons[self.PROTON_COLUMN_PREFIX].columns,
-            )
-            df_energies_protons["High Energy"] = (
-                df_energies_protons["Low Energy"] + df_energies_protons["Bin Width"]
-            )
-
-            df_energies_electrons = pd.DataFrame(
-                {
-                    "Low Energy": energies["Electron_Bins_Low_Energy"],
-                    "Bin Width": energies["Electron_Bins_Width"],
-                },
-                index=df_electrons[self.ELECTRON_COLUMN_PREFIX].columns,
-            )
-            df_energies_electrons["High Energy"] = (
-                df_energies_electrons["Low Energy"] + df_energies_electrons["Bin Width"]
-            )
-
-            if "protons" in particles and "electrons" in particles:
-                df_sensors.append(pd.concat([df_energies_protons, df_energies_electrons]))
-            elif "protons" in particles:
-                df_sensors.append(pd.concat([df_energies_protons]))
-            elif "electrons" in particles:
-                df_sensors.append(pd.concat([df_energies_electrons]))
-
-        self.df_energies = pd.concat(
-            df_sensors,
-            keys=[s for s, p in self.parameters.sensors_particles.items() if len(p) > 0],
-            names=["sensor", "channel"],
-        )
-
-        if self.parameters.view_dfs:
-            return self.df_energies
-
     def _group_channels_de(
         self,
         df_to_group: pd.DataFrame,
-        energy_bins_width: list[float],
-        column_prefix: str = "",
-        group_size: int = 2,
+        groups: list[list[str]],
+        energy_bins_widths: list[list[float]],
+        names: list[str]
     ) -> pd.DataFrame:
         # I = ΣI_n*ΔE_n / ΣΔE_n
         
-        if group_size == 1:
-            return df_to_group
-        
-        channels = list(range(len(df_to_group.columns)))
-        grouped_channels = [
-            channels[c : c + group_size] for c in range(0, len(channels), group_size)
-        ]
         grouped_all = {}
-        for group in grouped_channels:
-            de = sum([energy_bins_width[group[i]] for i, _ in enumerate(group)])
-            grouped_series = df_to_group.iloc[:, group[0]] * energy_bins_width[group[0]]
-            for i, _ in enumerate(group[1:]):
-                grouped_series = grouped_series.add(
-                    df_to_group.iloc[:, group[i]] * energy_bins_width[group[i]],
-                    fill_value=0,
-                )
-            grouped_all[
-                f"{column_prefix}{'_' if column_prefix != '' else ''}{group[0]}-{column_prefix}{'_' if column_prefix != '' else ''}{group[-1]}"
-            ] = (grouped_series / de)
+        for columns, energy_bins_width, name in zip(groups, energy_bins_widths, names):
+            de = sum(energy_bins_width)
+            grouped_series = df_to_group.loc[slice(None), columns[0]]*energy_bins_width[0]
+            for column, eb_width in zip(columns[1:], energy_bins_width[1:]):
+                grouped_series = grouped_series.add(df_to_group.loc[slice(None), column]*eb_width, fill_value=0)
+            grouped_all[name] = grouped_series/de
         df_grouped = pd.DataFrame(grouped_all)
         return df_grouped
 
@@ -336,18 +257,22 @@ class VDA:
                 for viewing in self.parameters.viewings:
                     df_temp = self._group_channels_de(
                         self.df_data[sensor][particle][viewing][particle_prefix],
-                        list(self.df_energies.loc[sensor]["Bin Width"]),
-                        column_prefix=particle_prefix,
-                        group_size=self.parameters.group_sizes[sensor][particle],
+                        [[f"{particle_prefix}_{c}" for c in spec["channels"]]
+                         for spec in self.parameters.channel_groups[particle].values()
+                         if spec["sensor"] == sensor],
+                        [[self.df_energies.loc[(sensor, f"{particle_prefix}_{c}"), "Bin Width"] for c in spec["channels"]]
+                         for spec in self.parameters.channel_groups[particle].values()
+                         if spec["sensor"] == sensor],
+                        [key for key, spec in self.parameters.channel_groups[particle].items() if spec["sensor"] == sensor]
                     )
                     df_temp = pd.concat(
                         [df_temp],
                         keys=[(sensor, particle, viewing, particle_prefix)],
                         axis="columns",
                     )
-                    self.df_grouped = pd.concat(
-                        [self.df_grouped, df_temp], axis="columns"
-                    )
+                    self.df_grouped = df_temp.copy() \
+                        if self.df_grouped.empty else \
+                        pd.concat([self.df_grouped, df_temp], axis="columns")
 
         if self.parameters.view_dfs:
             return self.df_grouped
@@ -654,16 +579,10 @@ class VDA:
                         particle_prefix
                     ].columns
                 ):
-                    low_energy_key = channel
-                    high_energy_key = channel
-                    if "-" in channel:
-                        channels = channel.split("-")
-                        low_energy_key = channels[0]
-                        high_energy_key = channels[1]
+                    low_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][0]}"
+                    high_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][-1]}"
                     low_energy = self.df_energies.loc[sensor, low_energy_key]["Low Energy"]
-                    high_energy = self.df_energies.loc[sensor, high_energy_key][
-                        "High Energy"
-                    ]
+                    high_energy = self.df_energies.loc[sensor, high_energy_key]["High Energy"]
                     
                     geo_mean = sqrt(low_energy) * sqrt(high_energy)
                     inv_beta = 1 / sqrt(
