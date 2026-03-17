@@ -96,8 +96,8 @@ class VDA_parameters:
                 "electrons": list(range(4))
             },
             "ept": {
-                "protons": list(range(34)),
-                "electrons": list(range(64))
+                "protons": list(range(64)),
+                "electrons": list(range(34))
             }
         }
 
