@@ -255,7 +255,7 @@ class VDA_nb_displayer:
             df_protons, df_electrons, energies = self.vda._epd_load(
                 sensor=sensor,
                 level="l2",
-                startdate=self.vda.df_times.iloc[0][self.vda.START_TIME_COLNAME],
+                startdate=self.vda.df_times.iloc[0][self.vda.BG_START_TIME_COLNAME],
                 enddate=self.vda.df_times.iloc[0][self.vda.END_TIME_COLNAME],
                 viewing="sun",
                 path=self.vda.DATA_PATH,
@@ -444,6 +444,15 @@ class VDA_nb_displayer:
             widget_params["disabled"] = False
             widget_params["style"] = self.WIDGETS_STYLE
             widget_params["layout"] = self.WIDGETS_LAYOUT
+            if parameter.startswith("bg_") and self.vda.parameters.input_type == 1:
+                if parameter == "bg_start":
+                    col = self.vda.BG_START_TIME_COLNAME
+                elif parameter == "bg_end":
+                    col = self.vda.BG_END_TIME_COLNAME
+                else:
+                    raise ValueError(f"Invalid bg parameter: {parameter}")
+                self.vda.parameters.onset_method_parameters[parameter] = self.vda.df_times[col]
+                continue
             if pinfo["type"] == int:
                 widget_type = widgets.IntSlider
                 widget_params["value"] = pinfo["default"]
@@ -594,14 +603,12 @@ class VDA_nb_displayer:
                                 plt.close()
                                 continue
 
-                            if "-" in column:
-                                channels = column.split("-")
-                                low_energy_key = channels[0]
-                                high_energy_key = channels[1]
-                            else:
-                                low_energy_key = column
-                                high_energy_key = column
-                            energy_range_str = f"{self.vda.df_energies.loc[(sensor, low_energy_key), 'Low Energy']:.2f}-{self.vda.df_energies.loc[(sensor, high_energy_key), 'High Energy']:.2f}"
+                            used_i = self.vda.parameters.channel_groups[particle][column]["channels"]
+                            low_i = used_i[0]
+                            high_i = used_i[-1]
+                            low_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{low_i}"), "Low Energy"]
+                            high_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{high_i}"), "High Energy"]
+                            energy_range_str = f"{low_energy:.2f}-{high_energy:.2f}"
                             
                             twgt = widgets.Label(
                                 value=f"Event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV):",
@@ -616,7 +623,7 @@ class VDA_nb_displayer:
                                                                                 particle_prefix,
                                                                                 column)].index],
                                 index=0,
-                                description=f"{event_no}/{sensor}/{particle}/{particle_prefix}/{column}",
+                                description=f"{event_no}|{sensor}|{particle}|{particle_prefix}|{column}",
                                 orientation="horizontal",
                                 style=self.WIDGETS_STYLE,
                                 layout=self.WIDGETS_LAYOUT
@@ -627,7 +634,7 @@ class VDA_nb_displayer:
                                     traitlet["owner"].description,
                                     "Viewing",
                                     traitlet["new"],
-                                    "/",
+                                    "|",
                                 ),
                                 names="value",
                             )

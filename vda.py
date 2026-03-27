@@ -5,6 +5,7 @@ import astropy.units as u
 from math import sqrt
 from os import getcwd
 from datetime import timezone, datetime, timedelta
+from copy import deepcopy
 
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
@@ -18,6 +19,13 @@ class VDA:
 
     def __init__(self, parameters):
         self.parameters = parameters
+        self.results = pd.DataFrame({
+            "Release Time": [],
+            "Release Time Error": [],
+            "Extra Time": [],
+            "APL": [],
+            "APL Error": []
+        })
 
     ############### Reference Times DF ###############
     @property
@@ -29,9 +37,13 @@ class VDA:
         return "Reference Time"
 
     @property
-    def START_TIME_COLNAME(self):
-        return "Start Time"
+    def BG_START_TIME_COLNAME(self):
+        return "BG Start"
 
+    @property
+    def BG_END_TIME_COLNAME(self):
+        return "BG End"
+    
     @property
     def END_TIME_COLNAME(self):
         return "End Time"
@@ -74,7 +86,7 @@ class VDA:
         if self.parameters.input_type == 0:
             self.df_times = pd.DataFrame(
                 {
-                    self.START_TIME_COLNAME: [self.parameters.date_start],
+                    self.BG_START_TIME_COLNAME: [self.parameters.date_start],
                     self.END_TIME_COLNAME: [self.parameters.date_end],
                 },
                 index=[1],
@@ -86,13 +98,17 @@ class VDA:
                 header=0,
                 names=[
                     self.EVENT_INDEX_NAME,
-                    self.START_TIME_COLNAME,
-                    self.END_TIME_COLNAME,
+                    self.BG_START_TIME_COLNAME,
+                    self.BG_END_TIME_COLNAME,
+                    self.END_TIME_COLNAME
                 ],
                 index_col=0,
             )
-            self.df_times[self.START_TIME_COLNAME] = pd.to_datetime(
-                self.df_times[self.START_TIME_COLNAME]
+            self.df_times[self.BG_START_TIME_COLNAME] = pd.to_datetime(
+                self.df_times[self.BG_START_TIME_COLNAME]
+            )
+            self.df_times[self.BG_END_TIME_COLNAME] = pd.to_datetime(
+                self.df_times[self.BG_END_TIME_COLNAME]
             )
             self.df_times[self.END_TIME_COLNAME] = pd.to_datetime(
                 self.df_times[self.END_TIME_COLNAME]
@@ -138,7 +154,7 @@ class VDA:
                     df_protons, df_electrons, _ = epd_load(
                         sensor=sensor,
                         level="l2",
-                        startdate=row[self.START_TIME_COLNAME],
+                        startdate=row[self.BG_START_TIME_COLNAME],
                         enddate=row[self.END_TIME_COLNAME],
                         viewing=viewing,
                         path=self.DATA_PATH,
@@ -154,7 +170,7 @@ class VDA:
                         ]
                         # df_protons.index = df_protons.index.tz_localize(timezone.utc)
                         df_protons = df_protons[
-                            (df_protons.index >= row[self.START_TIME_COLNAME])
+                            (df_protons.index >= row[self.BG_START_TIME_COLNAME])
                             & (df_protons.index <= row[self.END_TIME_COLNAME])
                         ]
                         if (
@@ -187,7 +203,7 @@ class VDA:
                         #     timezone.utc
                         # )
                         df_electrons = df_electrons[
-                            (df_electrons.index >= row[self.START_TIME_COLNAME])
+                            (df_electrons.index >= row[self.BG_START_TIME_COLNAME])
                             & (df_electrons.index <= row[self.END_TIME_COLNAME])
                         ]
                         if (
@@ -429,10 +445,14 @@ class VDA:
                                 particle_prefix
                             ]
                         ).columns:
-                            kwargs["sensor"] = sensor
-                            kwargs["particle"] = particle
-                            kwargs["viewing"] = viewing
-                            kwargs["channel"] = column_name
+                            new_kwargs = deepcopy(kwargs)
+                            new_kwargs["sensor"] = sensor
+                            new_kwargs["particle"] = particle
+                            new_kwargs["viewing"] = viewing
+                            new_kwargs["channel"] = column_name
+                            if "bg_start" in kwargs and type(kwargs["bg_start"]) is pd.Series:
+                                new_kwargs["bg_start"] = kwargs["bg_start"].loc[index_event].to_pydatetime()
+                                new_kwargs["bg_end"] = kwargs["bg_end"].loc[index_event].to_pydatetime()
                             try:
                                 onset_time, bg_start, bg_stop, method_specific = (
                                     self._onset_detection(
@@ -440,7 +460,7 @@ class VDA:
                                             0, axis="index"
                                         ),
                                         method,
-                                        **kwargs,
+                                        **new_kwargs,
                                     )
                                 )
                                 df_onsets = pd.concat(
@@ -465,7 +485,7 @@ class VDA:
                                     ]
                                 )
                             except Exception as e:
-                                print(index_event, type(e).__name__, kwargs)
+                                print(index_event, type(e).__name__, new_kwargs)
                                 df_onsets = pd.concat(
                                     [
                                         df_onsets,
@@ -632,7 +652,7 @@ class VDA:
             t_sun_to_observer = (
                 spice.get_body(
                     "Solar Orbiter",
-                    self.df_times.loc[index_event][self.START_TIME_COLNAME],
+                    self.df_times.loc[index_event][self.BG_START_TIME_COLNAME],
                     spice_frame="SOLO_HEEQ"
                 )
                 .distance.to(u.AU).value
@@ -663,6 +683,7 @@ class VDA:
                 # Not enough points for the linear regression
                 # Consider throughing warning
                 print(f"Not enough onset points in event {index_event}.")
+                self.results.loc[index_event] = np.nan
                 continue
 
             vda_points = sorted(vda_points, key=lambda x: x[0])
@@ -683,6 +704,14 @@ class VDA:
                 a, b = np.polyfit(inv_betas, timestamps, 1)
                 a_error = 0
                 b_error = 0
+            
+            self.results.loc[index_event] = {
+                "Release Time": datetime.fromtimestamp(b + t_sun_to_observer).strftime('%Y-%m-%d %H:%M:%S'),
+                "Release Time Error": timedelta(seconds=b_error),
+                "Extra Time": timedelta(seconds=t_sun_to_observer),
+                "APL": a / t_sun_to_observer,
+                "APL Error": a_error / t_sun_to_observer,
+            }
 
             fig, ax = plt.subplots(figsize=(10, 8))
             ax.scatter(
@@ -730,8 +759,8 @@ class VDA:
             plt.tight_layout()
             if savefig:
                 # date_str = self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')
-                time_start_str = self.df_times.loc[index_event]["Start Time"].strftime("%Y-%m-%d_%H%M")
-                time_end_str = self.df_times.loc[index_event]["End Time"].strftime("%Y-%m-%d_%H%M")
+                time_start_str = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
+                time_end_str = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
                 date_str = f"{time_start_str}_{time_end_str}"
                 particles_str = "_".join([f'{s}-{p}' for s, ps in self.parameters.sensors_particles.items() for p in ps])
                 freq_str = self.parameters.resample_frequency if self.parameters.resample_frequency != "" else "noresample"
@@ -749,12 +778,17 @@ class VDA:
             bot_lim, top_lim = ax.get_ylim()
             if bot_lim <= 0:
                 bot_lim = np.nanmin(temp_df.replace(0, np.nan).values)
-            plt.fill_betweenx(
-                [0, top_lim*10],
-                self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_start"]],
-                self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_end"]],
-                color="green",
-                alpha=0.3)
+            bg_start = self.df_times.loc[event_no][self.BG_START_TIME_COLNAME] \
+                       if self.parameters.input_type == 1 \
+                       else self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_start"]]
+            bg_end = self.df_times.loc[event_no][self.BG_END_TIME_COLNAME] \
+                     if self.parameters.input_type == 1 \
+                     else self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_end"]]
+            plt.fill_betweenx([0, top_lim*10],
+                              bg_start,
+                              bg_end,
+                              color="green",
+                              alpha=0.3)
 
             ax.set_ylabel("Flux")
             ax.set_yscale("log")
