@@ -7,6 +7,7 @@ from warnings import simplefilter, filterwarnings
 from pandas.errors import PerformanceWarning
 from astropy.visualization import quantity_support
 
+from tests.helpers import strip_figure_text
 from vda_tool_configuration import VDA_parameters
 from vda_views import VDA_nb_displayer
 from vda import VDA
@@ -80,4 +81,12 @@ def test_vda_default():
 
     fig = vda.plot(savefig=False, returnfig=True)
 
-    return fig
+    # check legend contents manually
+    handles, labels = fig.axes[0].get_legend_handles_labels()
+    assert labels == ['Linear Regression',
+                      'Extra Time = 0:06:40',
+                      'Release Time = 2021-10-28 15:31:11 +/- 0:03:38',
+                      'APL = 1.76 +/- 0.12']
+
+    # Strip before returning — don't rely solely on remove_text=True
+    return strip_figure_text(fig)
