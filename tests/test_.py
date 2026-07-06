@@ -80,12 +80,4 @@ def test_vda_default():
 
     fig = vda.plot(savefig=False, returnfig=True)
 
-    # Remove elements that vary across matplotlib versions.
-    for ax in fig.axes:
-        leg = ax.get_legend()
-        if leg:
-            leg.remove()
-    for leg in fig.legends:
-        leg.remove()
-
     return fig
