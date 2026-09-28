@@ -544,7 +544,8 @@ class VDA_nb_displayer:
                                 nrows = ceil(nplots/ncols)
                             fig, axs = plt.subplots(nrows,
                                                     ncols,
-                                                    figsize=(14, 8))
+                                                    figsize=(14, 8),
+                                                    dpi=300)
                             try:
                                 axs_flat = axs.flatten()
                             except AttributeError:
