@@ -261,25 +261,21 @@ class VDA_nb_displayer:
                 path=self.vda.DATA_PATH,
                 autodownload=True,
             )
-            if sensor == "het":
-                flux_cols_name = "H_Flux"
-                energy_bins_cols_name = "H_Bins"
-            elif sensor == "ept":
-                flux_cols_name = "Ion_Flux"
-                energy_bins_cols_name = "Ion_Bins"
+            flux_cols_name = self.vda.RAW_FLUX_COLUMN[sensor]
+            energy_bins_cols_name = self.vda.RAW_ENERGY_BINS_COLUMN[sensor]
             df_protons = df_protons.rename(
-                lambda x: x.replace(flux_cols_name, self.vda.PROTON_COLUMN_PREFIX),
+                lambda x: x.replace(flux_cols_name["protons"], self.vda.PROTON_COLUMN_PREFIX),
                 axis="columns",
             )
             df_electrons = df_electrons.rename(
-                lambda x: x.replace("Electron_Flux", self.vda.ELECTRON_COLUMN_PREFIX),
+                lambda x: x.replace(flux_cols_name["electrons"], self.vda.ELECTRON_COLUMN_PREFIX),
                 axis="columns",
             )
 
             df_energies_protons = pd.DataFrame(
                 {
-                    "Low Energy": energies[f"{energy_bins_cols_name}_Low_Energy"],
-                    "Bin Width": energies[f"{energy_bins_cols_name}_Width"],
+                    "Low Energy": energies[f"{energy_bins_cols_name['protons']}_Low_Energy"],
+                    "Bin Width": energies[f"{energy_bins_cols_name['protons']}_Width"],
                 },
                 index=df_protons[self.vda.PROTON_COLUMN_PREFIX].columns,
             )
@@ -289,8 +285,8 @@ class VDA_nb_displayer:
 
             df_energies_electrons = pd.DataFrame(
                 {
-                    "Low Energy": energies["Electron_Bins_Low_Energy"],
-                    "Bin Width": energies["Electron_Bins_Width"],
+                    "Low Energy": energies[f"{energy_bins_cols_name['electrons']}_Low_Energy"],
+                    "Bin Width": energies[f"{energy_bins_cols_name['electrons']}_Width"],
                 },
                 index=df_electrons[self.vda.ELECTRON_COLUMN_PREFIX].columns,
             )
@@ -528,10 +524,7 @@ class VDA_nb_displayer:
                 temp_df = event.droplevel(0)
                 for sensor, particles in self.vda.parameters.sensors_particles.items():
                     for particle in particles:
-                        if particle == "protons":
-                            particle_prefix = self.vda.PROTON_COLUMN_PREFIX
-                        elif particle == "electrons":
-                            particle_prefix = self.vda.ELECTRON_COLUMN_PREFIX
+                        particle_prefix = self.vda.PARTICLE_COLUMN_PREFIX[particle]
                         columns = temp_df[sensor][particle][self.vda.parameters.viewings[0]][particle_prefix].columns
                         for column in columns:
                             onset_found = False

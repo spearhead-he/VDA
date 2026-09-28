@@ -61,6 +61,26 @@ class VDA:
     def ELECTRON_COLUMN_PREFIX(self):
         return "Electron_Flux"
 
+    @property
+    def PARTICLE_COLUMN_PREFIX(self):
+        return {"protons": self.PROTON_COLUMN_PREFIX, "electrons": self.ELECTRON_COLUMN_PREFIX}
+
+    @property
+    def RAW_FLUX_COLUMN(self):
+        """Flux column names of the loaded data per sensor and particle"""
+        return {
+            "het": {"protons": "H_Flux", "electrons": "Electron_Flux"},
+            "ept": {"protons": "Ion_Flux", "electrons": "Electron_Flux"},
+        }
+
+    @property
+    def RAW_ENERGY_BINS_COLUMN(self):
+        """Energy bins keys of the loaded data per sensor and particle"""
+        return {
+            "het": {"protons": "H_Bins", "electrons": "Electron_Bins"},
+            "ept": {"protons": "Ion_Bins", "electrons": "Electron_Bins"},
+        }
+
     ############### Onset Selection ###############
     @property
     def VIEWINGS_HIERARCHY(self):
@@ -160,72 +180,34 @@ class VDA:
                         path=self.DATA_PATH,
                         autodownload=True,
                     )
-                    if "protons" in particles:
-                        if sensor == "het":
-                            flux_cols_name = "H_Flux"
-                        elif sensor == "ept":
-                            flux_cols_name = "Ion_Flux"
-                        df_protons = df_protons[
-                            [c for c in df_protons.columns if c[0] == flux_cols_name]
+                    for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
+                        if particle not in particles:
+                            continue
+                        flux_cols_name = self.RAW_FLUX_COLUMN[sensor][particle]
+                        df_particle = df_particle[
+                            [c for c in df_particle.columns if c[0] == flux_cols_name]
                         ]
-                        # df_protons.index = df_protons.index.tz_localize(timezone.utc)
-                        df_protons = df_protons[
-                            (df_protons.index >= row[self.BG_START_TIME_COLNAME])
-                            & (df_protons.index <= row[self.END_TIME_COLNAME])
+                        df_particle = df_particle[
+                            (df_particle.index >= row[self.BG_START_TIME_COLNAME])
+                            & (df_particle.index <= row[self.END_TIME_COLNAME])
                         ]
-                        if (
-                            self.parameters.resample_frequency is not None
-                            and self.parameters.resample_frequency != ""
-                        ):
-                            df_protons = df_protons.resample(
+                        if self.parameters.resample_frequency:
+                            df_particle = df_particle.resample(
                                 self.parameters.resample_frequency, origin="start"
                             ).mean()
-                            df_protons.index = df_protons.index.floor("min")
-                        df_protons = pd.concat(
-                            [df_protons],
-                            keys=[(sensor, "protons", viewing)],
+                            df_particle.index = df_particle.index.floor("min")
+                        df_particle = pd.concat(
+                            [df_particle],
+                            keys=[(sensor, particle, viewing)],
                             axis="columns",
                         )
-                        df_protons = df_protons.rename(
+                        df_particle = df_particle.rename(
                             lambda x: x.replace(
-                                flux_cols_name, self.PROTON_COLUMN_PREFIX
+                                flux_cols_name, self.PARTICLE_COLUMN_PREFIX[particle]
                             ),
                             axis="columns",
                         )
-                        df_row = pd.concat([df_row, df_protons], axis="columns")
-                    if "electrons" in particles:
-                        if sensor == "het" or sensor == "ept":
-                            flux_cols_name = "Electron_Flux"
-                        df_electrons = df_electrons[
-                            [c for c in df_electrons.columns if c[0] == flux_cols_name]
-                        ]
-                        # df_electrons.index = df_electrons.index.tz_localize(
-                        #     timezone.utc
-                        # )
-                        df_electrons = df_electrons[
-                            (df_electrons.index >= row[self.BG_START_TIME_COLNAME])
-                            & (df_electrons.index <= row[self.END_TIME_COLNAME])
-                        ]
-                        if (
-                            self.parameters.resample_frequency is not None
-                            and self.parameters.resample_frequency != ""
-                        ):
-                            df_electrons = df_electrons.resample(
-                                self.parameters.resample_frequency, origin="start"
-                            ).mean()
-                            df_electrons.index = df_electrons.index.floor("min")
-                        df_electrons = pd.concat(
-                            [df_electrons],
-                            keys=[(sensor, "electrons", viewing)],
-                            axis="columns",
-                        )
-                        df_electrons = df_electrons.rename(
-                            lambda x: x.replace(
-                                flux_cols_name, self.ELECTRON_COLUMN_PREFIX
-                            ),
-                            axis="columns",
-                        )
-                        df_row = pd.concat([df_row, df_electrons], axis="columns")
+                        df_row = pd.concat([df_row, df_particle], axis="columns")
             df_rows.append(df_row)
 
         if show_progress:
@@ -266,10 +248,7 @@ class VDA:
         self.df_grouped = pd.DataFrame({})
         for sensor, particles in self.parameters.sensors_particles.items():
             for particle in particles:
-                if particle == "protons":
-                    particle_prefix = self.PROTON_COLUMN_PREFIX
-                elif particle == "electrons":
-                    particle_prefix = self.ELECTRON_COLUMN_PREFIX
+                particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
                 for viewing in self.parameters.viewings:
                     df_temp = self._group_channels_de(
                         self.df_data[sensor][particle][viewing][particle_prefix],
@@ -435,10 +414,7 @@ class VDA:
         for index_event, df_event in df.groupby(level=0):
             for sensor, particles in self.parameters.sensors_particles.items():
                 for particle in particles:
-                    if particle == "protons":
-                        particle_prefix = self.PROTON_COLUMN_PREFIX
-                    elif particle == "electrons":
-                        particle_prefix = self.ELECTRON_COLUMN_PREFIX
+                    particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
                     for viewing in self.parameters.viewings:
                         for column_name in (
                             df_inner := df_event[sensor][particle][viewing][
@@ -590,10 +566,7 @@ class VDA:
         self.df_channels_chars = pd.DataFrame({})
         for sensor, particles in self.parameters.sensors_particles.items():
             for particle in particles:
-                if particle == "protons":
-                    particle_prefix = self.PROTON_COLUMN_PREFIX
-                elif particle == "electrons":
-                    particle_prefix = self.ELECTRON_COLUMN_PREFIX
+                particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
                 for channel in list(
                     self.df_grouped[sensor][particle][self.parameters.viewings[0]][
                         particle_prefix
