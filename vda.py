@@ -601,6 +601,8 @@ class VDA:
         self._vda_fits = {}
         for index_event in self.df_options.index.unique(level=0):
             vda_points = []
+            # onset times are fitted in seconds from the event start
+            t0 = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].to_pydatetime()
             t_sun_to_observer = (
                 spice.get_body(
                     "Solar Orbiter",
@@ -619,7 +621,7 @@ class VDA:
                     (self.df_channels_chars.loc[
                         sensor, particle, channel
                     ]["Inverse Beta"],
-                    self.df_onsets_existing.loc[
+                    (self.df_onsets_existing.loc[
                         index_event,
                         sensor,
                         particle,
@@ -627,8 +629,8 @@ class VDA:
                         particle_prefix,
                         channel
                     ]["Onset Time"]
-                    .to_pydatetime()
-                    .timestamp())
+                    .to_pydatetime() - t0)
+                    .total_seconds())
                 )
 
             if len(vda_points) < 2:
@@ -640,10 +642,10 @@ class VDA:
 
             vda_points = sorted(vda_points, key=lambda x: x[0])
             inv_betas = np.array([p[0] for p in vda_points])
-            timestamps = np.array([p[1] for p in vda_points])
+            onset_seconds = np.array([p[1] for p in vda_points])
 
             try:
-                p, V = np.polyfit(inv_betas, timestamps, 1, cov=True)
+                p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
                 a = p[0]
                 b = p[1]
                 a_error = np.sqrt(V[0][0])
@@ -653,20 +655,21 @@ class VDA:
                 print(
                     f"Not enough points for covariance matrix generation in event {index_event}"
                 )
-                a, b = np.polyfit(inv_betas, timestamps, 1)
+                a, b = np.polyfit(inv_betas, onset_seconds, 1)
                 a_error = 0
                 b_error = 0
 
             self.results.loc[index_event] = {
-                "Release Time": datetime.fromtimestamp(b + t_sun_to_observer).strftime('%Y-%m-%d %H:%M:%S'),
+                "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
                 "Release Time Error": timedelta(seconds=b_error),
                 "Extra Time": timedelta(seconds=t_sun_to_observer),
                 "APL": a / t_sun_to_observer,
                 "APL Error": a_error / t_sun_to_observer,
             }
             self._vda_fits[index_event] = {
+                "t0": t0,
                 "inv_betas": inv_betas,
-                "timestamps": timestamps,
+                "onset_seconds": onset_seconds,
                 "a": a,
                 "b": b,
                 "b_error": b_error,
@@ -680,27 +683,30 @@ class VDA:
         figs = []
         for index_event, fit in self._vda_fits.items():
             inv_betas = fit["inv_betas"]
-            timestamps = fit["timestamps"]
             a, b, b_error = fit["a"], fit["b"], fit["b_error"]
+
+            def to_time(seconds):
+                return fit["t0"] + timedelta(seconds=seconds)
+
             res = self.results.loc[index_event]
             self.print_results(index_event)
 
             fig, ax = plt.subplots(figsize=(10, 8))
             ax.scatter(
                 inv_betas,
-                [datetime.fromtimestamp(t) for t in timestamps],
+                [to_time(t) for t in fit["onset_seconds"]],
                 color="black",
             )
             ax.plot(
                 inv_betas,
-                [datetime.fromtimestamp(a * x + b) for x in inv_betas],
+                [to_time(a * x + b) for x in inv_betas],
                 label="Linear Regression",
                 color="blue",
             )
             ax.fill_between(
                 inv_betas,
-                [datetime.fromtimestamp(a * x + b - 2 * b_error) for x in inv_betas],
-                [datetime.fromtimestamp(a * x + b + 2 * b_error) for x in inv_betas],
+                [to_time(a * x + b - 2 * b_error) for x in inv_betas],
+                [to_time(a * x + b + 2 * b_error) for x in inv_betas],
                 color="blue",
                 alpha=0.1,
             )
