@@ -261,25 +261,21 @@ class VDA_nb_displayer:
                 path=self.vda.DATA_PATH,
                 autodownload=True,
             )
-            if sensor == "het":
-                flux_cols_name = "H_Flux"
-                energy_bins_cols_name = "H_Bins"
-            elif sensor == "ept":
-                flux_cols_name = "Ion_Flux"
-                energy_bins_cols_name = "Ion_Bins"
+            flux_cols_name = self.vda.RAW_FLUX_COLUMN[sensor]
+            energy_bins_cols_name = self.vda.RAW_ENERGY_BINS_COLUMN[sensor]
             df_protons = df_protons.rename(
-                lambda x: x.replace(flux_cols_name, self.vda.PROTON_COLUMN_PREFIX),
+                lambda x: x.replace(flux_cols_name["protons"], self.vda.PROTON_COLUMN_PREFIX),
                 axis="columns",
             )
             df_electrons = df_electrons.rename(
-                lambda x: x.replace("Electron_Flux", self.vda.ELECTRON_COLUMN_PREFIX),
+                lambda x: x.replace(flux_cols_name["electrons"], self.vda.ELECTRON_COLUMN_PREFIX),
                 axis="columns",
             )
 
             df_energies_protons = pd.DataFrame(
                 {
-                    "Low Energy": energies[f"{energy_bins_cols_name}_Low_Energy"],
-                    "Bin Width": energies[f"{energy_bins_cols_name}_Width"],
+                    "Low Energy": energies[f"{energy_bins_cols_name['protons']}_Low_Energy"],
+                    "Bin Width": energies[f"{energy_bins_cols_name['protons']}_Width"],
                 },
                 index=df_protons[self.vda.PROTON_COLUMN_PREFIX].columns,
             )
@@ -289,8 +285,8 @@ class VDA_nb_displayer:
 
             df_energies_electrons = pd.DataFrame(
                 {
-                    "Low Energy": energies["Electron_Bins_Low_Energy"],
-                    "Bin Width": energies["Electron_Bins_Width"],
+                    "Low Energy": energies[f"{energy_bins_cols_name['electrons']}_Low_Energy"],
+                    "Bin Width": energies[f"{energy_bins_cols_name['electrons']}_Width"],
                 },
                 index=df_electrons[self.vda.ELECTRON_COLUMN_PREFIX].columns,
             )
@@ -526,127 +522,122 @@ class VDA_nb_displayer:
             time_formatter = mdates.DateFormatter("%H:%M")
             for event_no, event in self.vda.df_grouped.groupby(level=0):
                 temp_df = event.droplevel(0)
-                for sensor, particles in self.vda.parameters.sensors_particles.items():
-                    for particle in particles:
-                        if particle == "protons":
-                            particle_prefix = self.vda.PROTON_COLUMN_PREFIX
-                        elif particle == "electrons":
-                            particle_prefix = self.vda.ELECTRON_COLUMN_PREFIX
-                        columns = temp_df[sensor][particle][self.vda.parameters.viewings[0]][particle_prefix].columns
-                        for column in columns:
-                            onset_found = False
-                            nplots = len(self.vda.parameters.viewings)
-                            ncols = 3
-                            if nplots <= ncols:
-                                nrows = 1
-                                ncols = nplots
-                            else:
-                                nrows = ceil(nplots/ncols)
-                            fig, axs = plt.subplots(nrows,
-                                                    ncols,
-                                                    figsize=(14, 8),
-                                                    dpi=300)
+                for sensor, particle, particle_prefix in self.vda._iter_sensor_particles():
+                    columns = temp_df[sensor][particle][self.vda.parameters.viewings[0]][particle_prefix].columns
+                    for column in columns:
+                        onset_found = False
+                        nplots = len(self.vda.parameters.viewings)
+                        ncols = 3
+                        if nplots <= ncols:
+                            nrows = 1
+                            ncols = nplots
+                        else:
+                            nrows = ceil(nplots/ncols)
+                        fig, axs = plt.subplots(nrows,
+                                                ncols,
+                                                figsize=(14, 8),
+                                                dpi=300)
+                        try:
+                            axs_flat = axs.flatten()
+                        except AttributeError:
+                            axs_flat = [axs]
+                        for ax in axs_flat[len(self.vda.parameters.viewings):]:
+                            ax.axis("off")
+                        for ax, viewing in zip(axs_flat, self.vda.parameters.viewings):
+                            ax.set_title(viewing)
                             try:
-                                axs_flat = axs.flatten()
-                            except AttributeError:
-                                axs_flat = [axs]
-                            for ax in axs_flat[len(self.vda.parameters.viewings):]:
-                                ax.axis("off")
-                            for ax, viewing in zip(axs_flat, self.vda.parameters.viewings):
-                                ax.set_title(viewing)
-                                try:
-                                    onset_results = self.vda.df_onsets_existing.loc[(event_no,
-                                                                                sensor,
-                                                                                particle,
-                                                                                viewing,
-                                                                                particle_prefix,
-                                                                                column)]
-                                    onset_found = True
-                                except KeyError:
-                                    continue
-
-                                ax.plot(temp_df[sensor][particle][viewing][particle_prefix][column].fillna(0).ffill(), label="Data")
-                                xlim = ax.get_xlim()
-                                ylim = ax.get_ylim()
-                                ax.fill_betweenx([0, ylim[1]],
-                                                onset_results["Background Start"],
-                                                onset_results["Background End"],
-                                                color="green",
-                                                alpha=0.3,
-                                                label="BG Sample")
-                                # bg level and threshold are only provided by the sigma method
-                                method_specific = onset_results["Method Specific"]
-                                if isinstance(method_specific, dict) and "bg_level" in method_specific:
-                                    ax.hlines(method_specific["bg_level"],
-                                            xlim[0],
-                                            xlim[1],
-                                            color="green",
-                                            linestyles="dashed",
-                                            label=f'BG ({method_specific["bg_level"]:.2f})')
-                                    ax.hlines(method_specific["threshold"],
-                                            xlim[0],
-                                            xlim[1],
-                                            color="red",
-                                            linestyles="dashed",
-                                            label=f'Threshold ({method_specific["threshold"]:.2f})')
-                                ax.vlines(onset_results["Onset Time"],
-                                        0,
-                                        ylim[1],
-                                        color="purple",
-                                        linestyles="dashed",
-                                        label=f'Onset ({onset_results["Onset Time"].strftime("%H:%M")})')
-
-                                ax.set_xlim(xlim)
-                                ax.xaxis.set_major_formatter(time_formatter)
-                                # ax.set_ylim(top=ylim[1])
-                                ax.set_yscale("log")
-
-                                ax.legend()
-                            
-                            if not onset_found:
-                                plt.close()
+                                onset_results = self.vda.df_onsets_existing.loc[(event_no,
+                                                                            sensor,
+                                                                            particle,
+                                                                            viewing,
+                                                                            particle_prefix,
+                                                                            column)]
+                                onset_found = True
+                            except KeyError:
                                 continue
 
-                            used_i = self.vda.parameters.channel_groups[particle][column]["channels"]
-                            low_i = used_i[0]
-                            high_i = used_i[-1]
-                            low_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{low_i}"), "Low Energy"]
-                            high_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{high_i}"), "High Energy"]
-                            energy_range_str = f"{low_energy:.2f}-{high_energy:.2f}"
-                            
-                            twgt = widgets.Label(
-                                value=f"Event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV):",
-                                style=self.WIDGETS_STYLE,
-                                layout=self.WIDGETS_LAYOUT
-                            )
-                            wrb = widgets.RadioButtons(
-                                options=[None] + [v for v in self.vda.parameters.viewings 
-                                                    if v in self.vda.df_options.loc[(event_no,
-                                                                                sensor,
-                                                                                particle,
-                                                                                particle_prefix,
-                                                                                column)].index],
-                                index=0,
-                                description=f"{event_no}|{sensor}|{particle}|{particle_prefix}|{column}",
-                                orientation="horizontal",
-                                style=self.WIDGETS_STYLE,
-                                layout=self.WIDGETS_LAYOUT
-                            )
-                            wrb.observe(
-                                lambda traitlet: self._change_parameter_df_index(
-                                    "selected_onsets",
-                                    traitlet["owner"].description,
-                                    "Viewing",
-                                    traitlet["new"],
-                                    "|",
-                                ),
-                                names="value",
-                            )
-                            display(widgets.HBox([twgt, wrb]))
+                            ax.plot(temp_df[sensor][particle][viewing][particle_prefix][column].fillna(0).ffill(), label="Data")
+                            xlim = ax.get_xlim()
+                            ylim = ax.get_ylim()
+                            ax.fill_betweenx([0, ylim[1]],
+                                            onset_results["Background Start"],
+                                            onset_results["Background End"],
+                                            color="green",
+                                            alpha=0.3,
+                                            label="BG Sample")
+                            # bg level and threshold are only provided by the sigma method
+                            method_specific = onset_results["Method Specific"]
+                            if isinstance(method_specific, dict) and "bg_level" in method_specific:
+                                ax.hlines(method_specific["bg_level"],
+                                        xlim[0],
+                                        xlim[1],
+                                        color="green",
+                                        linestyles="dashed",
+                                        label=f'BG ({method_specific["bg_level"]:.2f})')
+                                ax.hlines(method_specific["threshold"],
+                                        xlim[0],
+                                        xlim[1],
+                                        color="red",
+                                        linestyles="dashed",
+                                        label=f'Threshold ({method_specific["threshold"]:.2f})')
+                            ax.vlines(onset_results["Onset Time"],
+                                    0,
+                                    ylim[1],
+                                    color="purple",
+                                    linestyles="dashed",
+                                    label=f'Onset ({onset_results["Onset Time"].strftime("%H:%M")})')
 
-                            plt.suptitle(f"Detected onsets for event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV)")
-                            plt.tight_layout()
-                            plt.show()
+                            ax.set_xlim(xlim)
+                            ax.xaxis.set_major_formatter(time_formatter)
+                            # ax.set_ylim(top=ylim[1])
+                            ax.set_yscale("log")
+
+                            ax.legend()
+                            
+                        if not onset_found:
+                            plt.close()
+                            continue
+
+                        used_i = self.vda.parameters.channel_groups[particle][column]["channels"]
+                        low_i = used_i[0]
+                        high_i = used_i[-1]
+                        low_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{low_i}"), "Low Energy"]
+                        high_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{high_i}"), "High Energy"]
+                        energy_range_str = f"{low_energy:.2f}-{high_energy:.2f}"
+                            
+                        twgt = widgets.Label(
+                            value=f"Event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV):",
+                            style=self.WIDGETS_STYLE,
+                            layout=self.WIDGETS_LAYOUT
+                        )
+                        wrb = widgets.RadioButtons(
+                            options=[None] + [v for v in self.vda.parameters.viewings 
+                                                if v in self.vda.df_options.loc[(event_no,
+                                                                            sensor,
+                                                                            particle,
+                                                                            particle_prefix,
+                                                                            column)].index],
+                            index=0,
+                            description=f"{event_no}|{sensor}|{particle}|{particle_prefix}|{column}",
+                            orientation="horizontal",
+                            style=self.WIDGETS_STYLE,
+                            layout=self.WIDGETS_LAYOUT
+                        )
+                        wrb.observe(
+                            lambda traitlet: self._change_parameter_df_index(
+                                "selected_onsets",
+                                traitlet["owner"].description,
+                                "Viewing",
+                                traitlet["new"],
+                                "|",
+                            ),
+                            names="value",
+                        )
+                        display(widgets.HBox([twgt, wrb]))
+
+                        plt.suptitle(f"Detected onsets for event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV)")
+                        plt.tight_layout()
+                        plt.show()
         elif self.vda.parameters.onset_selection == 2:
             # # Custom list
             # df_selections = pd.DataFrame({})

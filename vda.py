@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 import astropy.units as u
+import astropy.constants as const
 
 from math import sqrt
 from os import getcwd
-from datetime import timezone, datetime, timedelta
-from copy import deepcopy
+from datetime import datetime, timedelta
 
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
@@ -28,57 +28,36 @@ class VDA:
         })
 
     ############### Reference Times DF ###############
-    @property
-    def EVENT_INDEX_NAME(self):
-        return "Event No"
-
-    @property
-    def REF_TIME_COLNAME(self):
-        return "Reference Time"
-
-    @property
-    def BG_START_TIME_COLNAME(self):
-        return "BG Start"
-
-    @property
-    def BG_END_TIME_COLNAME(self):
-        return "BG End"
-    
-    @property
-    def END_TIME_COLNAME(self):
-        return "End Time"
+    EVENT_INDEX_NAME = "Event No"
+    REF_TIME_COLNAME = "Reference Time"
+    BG_START_TIME_COLNAME = "BG Start"
+    BG_END_TIME_COLNAME = "BG End"
+    END_TIME_COLNAME = "End Time"
 
     ############### Particle Data ###############
     @property
     def DATA_PATH(self):
         return f"{getcwd()}/particle_data"
 
-    @property
-    def PROTON_COLUMN_PREFIX(self):
-        return "H_Flux"
+    PROTON_COLUMN_PREFIX = "H_Flux"
+    ELECTRON_COLUMN_PREFIX = "Electron_Flux"
+    PARTICLE_COLUMN_PREFIX = {"protons": PROTON_COLUMN_PREFIX, "electrons": ELECTRON_COLUMN_PREFIX}
 
-    @property
-    def ELECTRON_COLUMN_PREFIX(self):
-        return "Electron_Flux"
+    # Flux column names of the loaded data per sensor and particle
+    RAW_FLUX_COLUMN = {
+        "het": {"protons": "H_Flux", "electrons": "Electron_Flux"},
+        "ept": {"protons": "Ion_Flux", "electrons": "Electron_Flux"},
+    }
 
-    ############### Onset Selection ###############
-    @property
-    def VIEWINGS_HIERARCHY(self):
-        return ["sun", "north", "south", "asun", "omni"]
+    # Energy bins keys of the loaded data per sensor and particle
+    RAW_ENERGY_BINS_COLUMN = {
+        "het": {"protons": "H_Bins", "electrons": "Electron_Bins"},
+        "ept": {"protons": "Ion_Bins", "electrons": "Electron_Bins"},
+    }
 
     ############### VDA ###############
-    @property
-    def C(self):
-        return 299_792_458
+    M_REST = {"protons": 938.27, "electrons": 0.511}
 
-    @property
-    def AU_TO_M_RATIO(self):
-        return 1.495978707e11
-
-    @property
-    def M_REST(self):
-        return {"protons": 938.27, "electrons": 0.511}
-    
     def _epd_load(self, *args, **kwargs):
         return epd_load(*args, **kwargs)
 
@@ -132,10 +111,20 @@ class VDA:
             ].apply(lambda x: x + timedelta(hours=self.parameters.bg_hours_after))
             self.df_times = self.df_times.drop(self.REF_TIME_COLNAME, axis="columns")
 
-        # self.df_times = self.df_times.map(lambda x: x.replace(tzinfo=timezone.utc))
-
         if self.parameters.view_dfs:
             return self.df_times
+
+    def _iter_sensor_particles(self):
+        """Yields (sensor, particle, particle_prefix) for the selected sensors and particles"""
+        for sensor, particles in self.parameters.sensors_particles.items():
+            for particle in particles:
+                yield sensor, particle, self.PARTICLE_COLUMN_PREFIX[particle]
+
+    def _iter_sensor_particle_viewings(self):
+        """Yields (sensor, particle, viewing, particle_prefix) for the selected sensors, particles and viewings"""
+        for sensor, particle, particle_prefix in self._iter_sensor_particles():
+            for viewing in self.parameters.viewings:
+                yield sensor, particle, viewing, particle_prefix
 
     def _download_data(self, show_progress: bool = True) -> pd.DataFrame:
         df_rows = []
@@ -160,72 +149,34 @@ class VDA:
                         path=self.DATA_PATH,
                         autodownload=True,
                     )
-                    if "protons" in particles:
-                        if sensor == "het":
-                            flux_cols_name = "H_Flux"
-                        elif sensor == "ept":
-                            flux_cols_name = "Ion_Flux"
-                        df_protons = df_protons[
-                            [c for c in df_protons.columns if c[0] == flux_cols_name]
+                    for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
+                        if particle not in particles:
+                            continue
+                        flux_cols_name = self.RAW_FLUX_COLUMN[sensor][particle]
+                        df_particle = df_particle[
+                            [c for c in df_particle.columns if c[0] == flux_cols_name]
                         ]
-                        # df_protons.index = df_protons.index.tz_localize(timezone.utc)
-                        df_protons = df_protons[
-                            (df_protons.index >= row[self.BG_START_TIME_COLNAME])
-                            & (df_protons.index <= row[self.END_TIME_COLNAME])
+                        df_particle = df_particle[
+                            (df_particle.index >= row[self.BG_START_TIME_COLNAME])
+                            & (df_particle.index <= row[self.END_TIME_COLNAME])
                         ]
-                        if (
-                            self.parameters.resample_frequency is not None
-                            and self.parameters.resample_frequency != ""
-                        ):
-                            df_protons = df_protons.resample(
+                        if self.parameters.resample_frequency:
+                            df_particle = df_particle.resample(
                                 self.parameters.resample_frequency, origin="start"
                             ).mean()
-                            df_protons.index = df_protons.index.floor("min")
-                        df_protons = pd.concat(
-                            [df_protons],
-                            keys=[(sensor, "protons", viewing)],
+                            df_particle.index = df_particle.index.floor("min")
+                        df_particle = pd.concat(
+                            [df_particle],
+                            keys=[(sensor, particle, viewing)],
                             axis="columns",
                         )
-                        df_protons = df_protons.rename(
+                        df_particle = df_particle.rename(
                             lambda x: x.replace(
-                                flux_cols_name, self.PROTON_COLUMN_PREFIX
+                                flux_cols_name, self.PARTICLE_COLUMN_PREFIX[particle]
                             ),
                             axis="columns",
                         )
-                        df_row = pd.concat([df_row, df_protons], axis="columns")
-                    if "electrons" in particles:
-                        if sensor == "het" or sensor == "ept":
-                            flux_cols_name = "Electron_Flux"
-                        df_electrons = df_electrons[
-                            [c for c in df_electrons.columns if c[0] == flux_cols_name]
-                        ]
-                        # df_electrons.index = df_electrons.index.tz_localize(
-                        #     timezone.utc
-                        # )
-                        df_electrons = df_electrons[
-                            (df_electrons.index >= row[self.BG_START_TIME_COLNAME])
-                            & (df_electrons.index <= row[self.END_TIME_COLNAME])
-                        ]
-                        if (
-                            self.parameters.resample_frequency is not None
-                            and self.parameters.resample_frequency != ""
-                        ):
-                            df_electrons = df_electrons.resample(
-                                self.parameters.resample_frequency, origin="start"
-                            ).mean()
-                            df_electrons.index = df_electrons.index.floor("min")
-                        df_electrons = pd.concat(
-                            [df_electrons],
-                            keys=[(sensor, "electrons", viewing)],
-                            axis="columns",
-                        )
-                        df_electrons = df_electrons.rename(
-                            lambda x: x.replace(
-                                flux_cols_name, self.ELECTRON_COLUMN_PREFIX
-                            ),
-                            axis="columns",
-                        )
-                        df_row = pd.concat([df_row, df_electrons], axis="columns")
+                        df_row = pd.concat([df_row, df_particle], axis="columns")
             df_rows.append(df_row)
 
         if show_progress:
@@ -263,32 +214,24 @@ class VDA:
         return df_grouped
 
     def group_energy_channels(self):
-        self.df_grouped = pd.DataFrame({})
-        for sensor, particles in self.parameters.sensors_particles.items():
-            for particle in particles:
-                if particle == "protons":
-                    particle_prefix = self.PROTON_COLUMN_PREFIX
-                elif particle == "electrons":
-                    particle_prefix = self.ELECTRON_COLUMN_PREFIX
-                for viewing in self.parameters.viewings:
-                    df_temp = self._group_channels_de(
-                        self.df_data[sensor][particle][viewing][particle_prefix],
-                        [[f"{particle_prefix}_{c}" for c in spec["channels"]]
-                         for spec in self.parameters.channel_groups[particle].values()
-                         if spec["sensor"] == sensor],
-                        [[self.df_energies.loc[(sensor, f"{particle_prefix}_{c}"), "Bin Width"] for c in spec["channels"]]
-                         for spec in self.parameters.channel_groups[particle].values()
-                         if spec["sensor"] == sensor],
-                        [key for key, spec in self.parameters.channel_groups[particle].items() if spec["sensor"] == sensor]
-                    )
-                    df_temp = pd.concat(
-                        [df_temp],
-                        keys=[(sensor, particle, viewing, particle_prefix)],
-                        axis="columns",
-                    )
-                    self.df_grouped = df_temp.copy() \
-                        if self.df_grouped.empty else \
-                        pd.concat([self.df_grouped, df_temp], axis="columns")
+        grouped_frames = []
+        for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
+            df_temp = self._group_channels_de(
+                self.df_data[sensor][particle][viewing][particle_prefix],
+                [[f"{particle_prefix}_{c}" for c in spec["channels"]]
+                 for spec in self.parameters.channel_groups[particle].values()
+                 if spec["sensor"] == sensor],
+                [[self.df_energies.loc[(sensor, f"{particle_prefix}_{c}"), "Bin Width"] for c in spec["channels"]]
+                 for spec in self.parameters.channel_groups[particle].values()
+                 if spec["sensor"] == sensor],
+                [key for key, spec in self.parameters.channel_groups[particle].items() if spec["sensor"] == sensor]
+            )
+            grouped_frames.append(pd.concat(
+                [df_temp],
+                keys=[(sensor, particle, viewing, particle_prefix)],
+                axis="columns",
+            ))
+        self.df_grouped = pd.concat(grouped_frames, axis="columns")
 
         if self.parameters.view_dfs:
             return self.df_grouped
@@ -430,92 +373,45 @@ class VDA:
 
     def _onset_detection_df(
         self, df: pd.DataFrame, method: str = "sigma", **kwargs
-    ) -> dict:
-        df_onsets = pd.DataFrame({})
+    ) -> pd.DataFrame:
+        rows = []
+        index = []
         for index_event, df_event in df.groupby(level=0):
-            for sensor, particles in self.parameters.sensors_particles.items():
-                for particle in particles:
-                    if particle == "protons":
-                        particle_prefix = self.PROTON_COLUMN_PREFIX
-                    elif particle == "electrons":
-                        particle_prefix = self.ELECTRON_COLUMN_PREFIX
-                    for viewing in self.parameters.viewings:
-                        for column_name in (
-                            df_inner := df_event[sensor][particle][viewing][
-                                particle_prefix
-                            ]
-                        ).columns:
-                            new_kwargs = deepcopy(kwargs)
-                            new_kwargs["sensor"] = sensor
-                            new_kwargs["particle"] = particle
-                            new_kwargs["viewing"] = viewing
-                            new_kwargs["channel"] = column_name
-                            if "bg_start" in kwargs and type(kwargs["bg_start"]) is pd.Series:
-                                new_kwargs["bg_start"] = kwargs["bg_start"].loc[index_event].to_pydatetime()
-                                new_kwargs["bg_end"] = kwargs["bg_end"].loc[index_event].to_pydatetime()
-                            try:
-                                onset_time, bg_start, bg_stop, method_specific = (
-                                    self._onset_detection(
-                                        df_inner[column_name].droplevel(
-                                            0, axis="index"
-                                        ),
-                                        method,
-                                        **new_kwargs,
-                                    )
-                                )
-                                df_onsets = pd.concat(
-                                    [
-                                        df_onsets,
-                                        pd.DataFrame(
-                                            {
-                                                "Onset Time": [onset_time],
-                                                "Background Start": [bg_start],
-                                                "Background End": [bg_stop],
-                                                "Method Specific": [method_specific],
-                                            },
-                                            index=[
-                                                [index_event],
-                                                [sensor],
-                                                [particle],
-                                                [viewing],
-                                                [particle_prefix],
-                                                [column_name],
-                                            ],
-                                        ),
-                                    ]
-                                )
-                            except Exception as e:
-                                print(index_event, type(e).__name__, new_kwargs)
-                                df_onsets = pd.concat(
-                                    [
-                                        df_onsets,
-                                        pd.DataFrame(
-                                            {
-                                                "Onset Time": [pd.NaT],
-                                                "Background Start": [pd.NaT],
-                                                "Background End": [pd.NaT],
-                                                "Method Specific": [None],
-                                            },
-                                            index=[
-                                                [index_event],
-                                                [sensor],
-                                                [particle],
-                                                [viewing],
-                                                [particle_prefix],
-                                                [column_name],
-                                            ],
-                                        ),
-                                    ]
-                                )
-        df_onsets.index.names = [
-            self.EVENT_INDEX_NAME,
-            "sensor",
-            "particle",
-            "viewing",
-            "prefix",
-            "channels",
-        ]
-        return df_onsets
+            for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
+                df_inner = df_event[sensor][particle][viewing][particle_prefix]
+                for column_name in df_inner.columns:
+                    new_kwargs = dict(kwargs)
+                    new_kwargs["sensor"] = sensor
+                    new_kwargs["particle"] = particle
+                    new_kwargs["viewing"] = viewing
+                    new_kwargs["channel"] = column_name
+                    if "bg_start" in kwargs and isinstance(kwargs["bg_start"], pd.Series):
+                        new_kwargs["bg_start"] = kwargs["bg_start"].loc[index_event].to_pydatetime()
+                        new_kwargs["bg_end"] = kwargs["bg_end"].loc[index_event].to_pydatetime()
+                    try:
+                        onset_time, bg_start, bg_stop, method_specific = self._onset_detection(
+                            df_inner[column_name].droplevel(0, axis="index"),
+                            method,
+                            **new_kwargs,
+                        )
+                    except Exception as e:
+                        print(index_event, type(e).__name__, new_kwargs)
+                        onset_time, bg_start, bg_stop, method_specific = pd.NaT, pd.NaT, pd.NaT, None
+                    rows.append({
+                        "Onset Time": onset_time,
+                        "Background Start": bg_start,
+                        "Background End": bg_stop,
+                        "Method Specific": method_specific,
+                    })
+                    index.append((index_event, sensor, particle, viewing, particle_prefix, column_name))
+
+        return pd.DataFrame(
+            rows,
+            index=pd.MultiIndex.from_tuples(
+                index,
+                names=[self.EVENT_INDEX_NAME, "sensor", "particle", "viewing", "prefix", "channels"],
+            ),
+        )
 
     def calculate_onsets(self):
         self.df_onsets = self._onset_detection_df(
@@ -548,79 +444,30 @@ class VDA:
         # if self.parameters.view_dfs:
         #     return self.df_options
 
-    def _plot_onset(
-        self,
-        series: pd.Series,
-        onset_time: datetime,
-        bg_start_time: datetime,
-        bg_end_time: datetime,
-        title: str,
-        vlines: dict = None,
-        hlines: dict = None,
-    ) -> None:
-        ax = series.fillna(0).plot(title=title, logy=True, label="Data")
-        ax.set_ylim((ylim := ax.get_ylim())[0] * 0.01, ylim[1] * 100)
-        ax.axvline(onset_time, linestyle="--", label="Onset time")
-        ylim_top = ax.get_ylim()[1]
-        ax.fill_between(
-            [bg_start_time, bg_end_time],
-            0,
-            ylim_top,
-            color="green",
-            alpha=0.25,
-            label="BG sample",
-        )
-        if vlines is not None:
-            for label, line_info in vlines.items():
-                ax.axvline(
-                    line_info["value"], label=label, **line_info.get("lineargs", {})
-                )
-        if hlines is not None:
-            for label, line_info in hlines.items():
-                ax.axhline(
-                    line_info["value"], label=label, **line_info.get("lineargs", {})
-                )
-        ax.set_ylim(top=ylim_top)
-        ax.legend()
-        plt.axes(ax)
-        plt.tight_layout()
-        plt.show()
-
     def construct_energy_channels_characteristics(self):
-        self.df_channels_chars = pd.DataFrame({})
-        for sensor, particles in self.parameters.sensors_particles.items():
-            for particle in particles:
-                if particle == "protons":
-                    particle_prefix = self.PROTON_COLUMN_PREFIX
-                elif particle == "electrons":
-                    particle_prefix = self.ELECTRON_COLUMN_PREFIX
-                for channel in list(
-                    self.df_grouped[sensor][particle][self.parameters.viewings[0]][
-                        particle_prefix
-                    ].columns
-                ):
-                    low_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][0]}"
-                    high_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][-1]}"
-                    low_energy = self.df_energies.loc[sensor, low_energy_key]["Low Energy"]
-                    high_energy = self.df_energies.loc[sensor, high_energy_key]["High Energy"]
+        rows = []
+        index = []
+        for sensor, particle, particle_prefix in self._iter_sensor_particles():
+            for channel in list(
+                self.df_grouped[sensor][particle][self.parameters.viewings[0]][
+                    particle_prefix
+                ].columns
+            ):
+                low_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][0]}"
+                high_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][-1]}"
+                low_energy = self.df_energies.loc[sensor, low_energy_key]["Low Energy"]
+                high_energy = self.df_energies.loc[sensor, high_energy_key]["High Energy"]
                     
-                    geo_mean = sqrt(low_energy) * sqrt(high_energy)
-                    inv_beta = 1 / sqrt(
-                        1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
-                    )
-                    self.df_channels_chars = pd.concat(
-                        [
-                            self.df_channels_chars,
-                            pd.DataFrame(
-                                {
-                                    "Geomagnetic Mean": [geo_mean],
-                                    "Inverse Beta": [inv_beta],
-                                },
-                                index=[[sensor], [particle], [channel]],
-                            ),
-                        ]
-                    )
-        self.df_channels_chars.index.names = ["sensor", "particle", "channel"]
+                geo_mean = sqrt(low_energy) * sqrt(high_energy)
+                inv_beta = 1 / sqrt(
+                    1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
+                )
+                rows.append({"Geomagnetic Mean": geo_mean, "Inverse Beta": inv_beta})
+                index.append((sensor, particle, channel))
+        self.df_channels_chars = pd.DataFrame(
+            rows,
+            index=pd.MultiIndex.from_tuples(index, names=["sensor", "particle", "channel"]),
+        )
 
         if self.parameters.view_dfs:
             return self.df_channels_chars
@@ -646,15 +493,16 @@ class VDA:
 
         spice.initialize(kernel_files)
 
+    @staticmethod
+    def _format_timedelta(td) -> str:
+        return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
+
     def print_results(self, events=None) -> None:
         """Prints the VDA results of the given event number(s), or of all events if None."""
         if events is None:
             events = self.results.index
         elif not isinstance(events, (list, tuple, pd.Index)):
             events = [events]
-
-        def format_timedelta(td):
-            return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
 
         for index_event in events:
             time_start = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
@@ -664,28 +512,26 @@ class VDA:
             if pd.isna(res["APL"]):
                 print("    No results (not enough onset points)\n")
                 continue
-            print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
-            print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
+            print(f"    Release Time : {res['Release Time']} ± {self._format_timedelta(res['Release Time Error'])}")
+            print(f"    Extra Time   : {self._format_timedelta(res['Extra Time'])}")
             print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
 
-    def plot(self, savefig: bool = True, returnfig: bool = False):
-        """Fits the VDA line for each event, stores it in self.results and plots it.
-
-        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
-        """
-        figs = []
-        for index_event, df_event in self.df_options.groupby(level=0):
+    def compute_vda(self):
+        """Fits the VDA line of each event and stores the results in self.results"""
+        self._vda_fits = {}
+        for index_event in self.df_options.index.unique(level=0):
             vda_points = []
+            # onset times are fitted in seconds from the event start
+            t0 = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].to_pydatetime()
             t_sun_to_observer = (
                 spice.get_body(
                     "Solar Orbiter",
                     self.df_times.loc[index_event][self.BG_START_TIME_COLNAME],
                     spice_frame="SOLO_HEEQ"
                 )
-                .distance.to(u.AU).value
-                * self.AU_TO_M_RATIO
-                / self.C
-            )
+                .distance
+                / const.c
+            ).to(u.s).value
             for i, row in self.parameters.selected_onsets.loc[index_event].iterrows():
                 if row["Viewing"] is None:
                     continue
@@ -694,7 +540,7 @@ class VDA:
                     (self.df_channels_chars.loc[
                         sensor, particle, channel
                     ]["Inverse Beta"],
-                    self.df_onsets_existing.loc[
+                    (self.df_onsets_existing.loc[
                         index_event,
                         sensor,
                         particle,
@@ -702,8 +548,8 @@ class VDA:
                         particle_prefix,
                         channel
                     ]["Onset Time"]
-                    .to_pydatetime()
-                    .timestamp())
+                    .to_pydatetime() - t0)
+                    .total_seconds())
                 )
 
             if len(vda_points) < 2:
@@ -715,10 +561,10 @@ class VDA:
 
             vda_points = sorted(vda_points, key=lambda x: x[0])
             inv_betas = np.array([p[0] for p in vda_points])
-            timestamps = np.array([p[1] for p in vda_points])
+            onset_seconds = np.array([p[1] for p in vda_points])
 
             try:
-                p, V = np.polyfit(inv_betas, timestamps, 1, cov=True)
+                p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
                 a = p[0]
                 b = p[1]
                 a_error = np.sqrt(V[0][0])
@@ -728,35 +574,58 @@ class VDA:
                 print(
                     f"Not enough points for covariance matrix generation in event {index_event}"
                 )
-                a, b = np.polyfit(inv_betas, timestamps, 1)
+                a, b = np.polyfit(inv_betas, onset_seconds, 1)
                 a_error = 0
                 b_error = 0
-            
+
             self.results.loc[index_event] = {
-                "Release Time": datetime.fromtimestamp(b + t_sun_to_observer).strftime('%Y-%m-%d %H:%M:%S'),
+                "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
                 "Release Time Error": timedelta(seconds=b_error),
                 "Extra Time": timedelta(seconds=t_sun_to_observer),
                 "APL": a / t_sun_to_observer,
                 "APL Error": a_error / t_sun_to_observer,
             }
+            self._vda_fits[index_event] = {
+                "t0": t0,
+                "inv_betas": inv_betas,
+                "onset_seconds": onset_seconds,
+                "a": a,
+                "b": b,
+                "b_error": b_error,
+            }
+
+    def plot_vda(self, savefig: bool = True, returnfig: bool = False):
+        """Prints the results and plots the VDA fit of each event computed by compute_vda.
+
+        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
+        """
+        figs = []
+        for index_event, fit in self._vda_fits.items():
+            inv_betas = fit["inv_betas"]
+            a, b, b_error = fit["a"], fit["b"], fit["b_error"]
+
+            def to_time(seconds):
+                return fit["t0"] + timedelta(seconds=seconds)
+
+            res = self.results.loc[index_event]
             self.print_results(index_event)
 
             fig, ax = plt.subplots(figsize=(10, 8))
             ax.scatter(
                 inv_betas,
-                [datetime.fromtimestamp(t) for t in timestamps],
+                [to_time(t) for t in fit["onset_seconds"]],
                 color="black",
             )
             ax.plot(
                 inv_betas,
-                [datetime.fromtimestamp(a * x + b) for x in inv_betas],
+                [to_time(a * x + b) for x in inv_betas],
                 label="Linear Regression",
                 color="blue",
             )
             ax.fill_between(
                 inv_betas,
-                [datetime.fromtimestamp(a * x + b - 2 * b_error) for x in inv_betas],
-                [datetime.fromtimestamp(a * x + b + 2 * b_error) for x in inv_betas],
+                [to_time(a * x + b - 2 * b_error) for x in inv_betas],
+                [to_time(a * x + b + 2 * b_error) for x in inv_betas],
                 color="blue",
                 alpha=0.1,
             )
@@ -769,19 +638,19 @@ class VDA:
                 [],
                 [],
                 alpha=0,
-                label=f"Extra Time = {str(timedelta(seconds=t_sun_to_observer)).split('.')[0]}",
+                label=f"Extra Time = {self._format_timedelta(res['Extra Time'])}",
             )
             plt.plot(
                 [],
                 [],
                 alpha=0,
-                label=f"Release Time = {datetime.fromtimestamp(b + t_sun_to_observer).strftime('%Y-%m-%d %H:%M:%S')} +/- {str(timedelta(seconds=b_error)).split('.')[0]}",
+                label=f"Release Time = {res['Release Time']} +/- {self._format_timedelta(res['Release Time Error'])}",
             )
             plt.plot(
                 [],
                 [],
                 alpha=0,
-                label=f"APL = {a / t_sun_to_observer:.2f} +/- {a_error / t_sun_to_observer:.2f}",
+                label=f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
             )
             plt.legend(bbox_to_anchor=(1, 0.6), loc="upper left")
             plt.tight_layout()
@@ -799,6 +668,14 @@ class VDA:
 
         if returnfig:
             return figs[0] if len(figs) == 1 else figs
+
+    def plot(self, savefig: bool = True, returnfig: bool = False):
+        """Fits the VDA line of each event, stores it in self.results, prints the results and plots them.
+
+        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
+        """
+        self.compute_vda()
+        return self.plot_vda(savefig, returnfig)
 
     def plot_bg_selection(self):
         for event_no, event in self.df_grouped.groupby(level=0):
