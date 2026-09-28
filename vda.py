@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 import astropy.units as u
+import astropy.constants as const
 
 from math import sqrt
 from os import getcwd
-from datetime import timezone, datetime, timedelta
+from datetime import datetime, timedelta
 
 from matplotlib import pyplot as plt
 from matplotlib import dates as mdates
@@ -27,77 +28,36 @@ class VDA:
         })
 
     ############### Reference Times DF ###############
-    @property
-    def EVENT_INDEX_NAME(self):
-        return "Event No"
-
-    @property
-    def REF_TIME_COLNAME(self):
-        return "Reference Time"
-
-    @property
-    def BG_START_TIME_COLNAME(self):
-        return "BG Start"
-
-    @property
-    def BG_END_TIME_COLNAME(self):
-        return "BG End"
-    
-    @property
-    def END_TIME_COLNAME(self):
-        return "End Time"
+    EVENT_INDEX_NAME = "Event No"
+    REF_TIME_COLNAME = "Reference Time"
+    BG_START_TIME_COLNAME = "BG Start"
+    BG_END_TIME_COLNAME = "BG End"
+    END_TIME_COLNAME = "End Time"
 
     ############### Particle Data ###############
     @property
     def DATA_PATH(self):
         return f"{getcwd()}/particle_data"
 
-    @property
-    def PROTON_COLUMN_PREFIX(self):
-        return "H_Flux"
+    PROTON_COLUMN_PREFIX = "H_Flux"
+    ELECTRON_COLUMN_PREFIX = "Electron_Flux"
+    PARTICLE_COLUMN_PREFIX = {"protons": PROTON_COLUMN_PREFIX, "electrons": ELECTRON_COLUMN_PREFIX}
 
-    @property
-    def ELECTRON_COLUMN_PREFIX(self):
-        return "Electron_Flux"
+    # Flux column names of the loaded data per sensor and particle
+    RAW_FLUX_COLUMN = {
+        "het": {"protons": "H_Flux", "electrons": "Electron_Flux"},
+        "ept": {"protons": "Ion_Flux", "electrons": "Electron_Flux"},
+    }
 
-    @property
-    def PARTICLE_COLUMN_PREFIX(self):
-        return {"protons": self.PROTON_COLUMN_PREFIX, "electrons": self.ELECTRON_COLUMN_PREFIX}
-
-    @property
-    def RAW_FLUX_COLUMN(self):
-        """Flux column names of the loaded data per sensor and particle"""
-        return {
-            "het": {"protons": "H_Flux", "electrons": "Electron_Flux"},
-            "ept": {"protons": "Ion_Flux", "electrons": "Electron_Flux"},
-        }
-
-    @property
-    def RAW_ENERGY_BINS_COLUMN(self):
-        """Energy bins keys of the loaded data per sensor and particle"""
-        return {
-            "het": {"protons": "H_Bins", "electrons": "Electron_Bins"},
-            "ept": {"protons": "Ion_Bins", "electrons": "Electron_Bins"},
-        }
-
-    ############### Onset Selection ###############
-    @property
-    def VIEWINGS_HIERARCHY(self):
-        return ["sun", "north", "south", "asun", "omni"]
+    # Energy bins keys of the loaded data per sensor and particle
+    RAW_ENERGY_BINS_COLUMN = {
+        "het": {"protons": "H_Bins", "electrons": "Electron_Bins"},
+        "ept": {"protons": "Ion_Bins", "electrons": "Electron_Bins"},
+    }
 
     ############### VDA ###############
-    @property
-    def C(self):
-        return 299_792_458
+    M_REST = {"protons": 938.27, "electrons": 0.511}
 
-    @property
-    def AU_TO_M_RATIO(self):
-        return 1.495978707e11
-
-    @property
-    def M_REST(self):
-        return {"protons": 938.27, "electrons": 0.511}
-    
     def _epd_load(self, *args, **kwargs):
         return epd_load(*args, **kwargs)
 
@@ -150,8 +110,6 @@ class VDA:
                 self.REF_TIME_COLNAME
             ].apply(lambda x: x + timedelta(hours=self.parameters.bg_hours_after))
             self.df_times = self.df_times.drop(self.REF_TIME_COLNAME, axis="columns")
-
-        # self.df_times = self.df_times.map(lambda x: x.replace(tzinfo=timezone.utc))
 
         if self.parameters.view_dfs:
             return self.df_times
@@ -486,44 +444,6 @@ class VDA:
         # if self.parameters.view_dfs:
         #     return self.df_options
 
-    def _plot_onset(
-        self,
-        series: pd.Series,
-        onset_time: datetime,
-        bg_start_time: datetime,
-        bg_end_time: datetime,
-        title: str,
-        vlines: dict = None,
-        hlines: dict = None,
-    ) -> None:
-        ax = series.fillna(0).plot(title=title, logy=True, label="Data")
-        ax.set_ylim((ylim := ax.get_ylim())[0] * 0.01, ylim[1] * 100)
-        ax.axvline(onset_time, linestyle="--", label="Onset time")
-        ylim_top = ax.get_ylim()[1]
-        ax.fill_between(
-            [bg_start_time, bg_end_time],
-            0,
-            ylim_top,
-            color="green",
-            alpha=0.25,
-            label="BG sample",
-        )
-        if vlines is not None:
-            for label, line_info in vlines.items():
-                ax.axvline(
-                    line_info["value"], label=label, **line_info.get("lineargs", {})
-                )
-        if hlines is not None:
-            for label, line_info in hlines.items():
-                ax.axhline(
-                    line_info["value"], label=label, **line_info.get("lineargs", {})
-                )
-        ax.set_ylim(top=ylim_top)
-        ax.legend()
-        plt.axes(ax)
-        plt.tight_layout()
-        plt.show()
-
     def construct_energy_channels_characteristics(self):
         rows = []
         index = []
@@ -609,10 +529,9 @@ class VDA:
                     self.df_times.loc[index_event][self.BG_START_TIME_COLNAME],
                     spice_frame="SOLO_HEEQ"
                 )
-                .distance.to(u.AU).value
-                * self.AU_TO_M_RATIO
-                / self.C
-            )
+                .distance
+                / const.c
+            ).to(u.s).value
             for i, row in self.parameters.selected_onsets.loc[index_event].iterrows():
                 if row["Viewing"] is None:
                     continue
