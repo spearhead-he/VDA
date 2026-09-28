@@ -646,6 +646,28 @@ class VDA:
 
         spice.initialize(kernel_files)
 
+    def print_results(self, events=None) -> None:
+        """Prints the VDA results of the given event number(s), or of all events if None."""
+        if events is None:
+            events = self.results.index
+        elif not isinstance(events, (list, tuple, pd.Index)):
+            events = [events]
+
+        def format_timedelta(td):
+            return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
+
+        for index_event in events:
+            time_start = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
+            time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
+            print(f"Event {index_event} ({time_start} to {time_end})")
+            res = self.results.loc[index_event]
+            if pd.isna(res["APL"]):
+                print("    No results (not enough onset points)\n")
+                continue
+            print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
+            print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
+            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+
     def plot(self, savefig: bool = True, returnfig: bool = False):
         """Fits the VDA line for each event, stores it in self.results and plots it.
 
@@ -717,6 +739,7 @@ class VDA:
                 "APL": a / t_sun_to_observer,
                 "APL Error": a_error / t_sun_to_observer,
             }
+            self.print_results(index_event)
 
             fig, ax = plt.subplots(figsize=(10, 8))
             ax.scatter(
