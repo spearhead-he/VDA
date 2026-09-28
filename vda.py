@@ -124,7 +124,7 @@ class VDA:
             self.df_times[self.REF_TIME_COLNAME] = pd.to_datetime(
                 self.df_times[self.REF_TIME_COLNAME]
             )
-            self.df_times[self.START_TIME_COLNAME] = self.df_times[
+            self.df_times[self.BG_START_TIME_COLNAME] = self.df_times[
                 self.REF_TIME_COLNAME
             ].apply(lambda x: x - timedelta(hours=self.parameters.bg_hours_prior))
             self.df_times[self.END_TIME_COLNAME] = self.df_times[
@@ -151,7 +151,7 @@ class VDA:
                     continue
                 
                 for viewing in self.parameters.viewings:
-                    df_protons, df_electrons, _ = epd_load(
+                    df_protons, df_electrons, _ = self._epd_load(
                         sensor=sensor,
                         level="l2",
                         startdate=row[self.BG_START_TIME_COLNAME],
@@ -309,9 +309,9 @@ class VDA:
         4. Background Level
         5. Threshold
         """
-        if type(bg_start) is int:
+        if isinstance(bg_start, (int, np.integer)):
             bg_start = series.index[bg_start]
-        if type(bg_end) is int:
+        if isinstance(bg_end, (int, np.integer)):
             bg_end = series.index[bg_end]
         bg_level = (bg_series := series[bg_start:bg_end]).mean()
         threshold = bg_level + s * bg_series.std()
@@ -354,9 +354,9 @@ class VDA:
         sample_size: float = 0.75,
         limit_averaging: str = "4 min",
     ) -> tuple:
-        if type(bg_start) is int:
+        if isinstance(bg_start, (int, np.integer)):
             bg_start = series.index[bg_start]
-        if type(bg_end) is int:
+        if isinstance(bg_end, (int, np.integer)):
             bg_end = series.index[bg_end]
         df = pd.DataFrame(series)
         df.index.freq = self.parameters.resample_frequency
@@ -646,7 +646,34 @@ class VDA:
 
         spice.initialize(kernel_files)
 
+    def print_results(self, events=None) -> None:
+        """Prints the VDA results of the given event number(s), or of all events if None."""
+        if events is None:
+            events = self.results.index
+        elif not isinstance(events, (list, tuple, pd.Index)):
+            events = [events]
+
+        def format_timedelta(td):
+            return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
+
+        for index_event in events:
+            time_start = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
+            time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
+            print(f"Event {index_event} ({time_start} to {time_end})")
+            res = self.results.loc[index_event]
+            if pd.isna(res["APL"]):
+                print("    No results (not enough onset points)\n")
+                continue
+            print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
+            print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
+            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+
     def plot(self, savefig: bool = True, returnfig: bool = False):
+        """Fits the VDA line for each event, stores it in self.results and plots it.
+
+        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
+        """
+        figs = []
         for index_event, df_event in self.df_options.groupby(level=0):
             vda_points = []
             t_sun_to_observer = (
@@ -712,6 +739,7 @@ class VDA:
                 "APL": a / t_sun_to_observer,
                 "APL Error": a_error / t_sun_to_observer,
             }
+            self.print_results(index_event)
 
             fig, ax = plt.subplots(figsize=(10, 8))
             ax.scatter(
@@ -767,8 +795,10 @@ class VDA:
                 filename = f"{date_str}_{particles_str}_{freq_str}.png"
                 plt.savefig(filename)
             plt.show()
-            if returnfig:
-                return fig
+            figs.append(fig)
+
+        if returnfig:
+            return figs[0] if len(figs) == 1 else figs
 
     def plot_bg_selection(self):
         for event_no, event in self.df_grouped.groupby(level=0):
