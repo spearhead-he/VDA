@@ -124,7 +124,7 @@ class VDA:
             self.df_times[self.REF_TIME_COLNAME] = pd.to_datetime(
                 self.df_times[self.REF_TIME_COLNAME]
             )
-            self.df_times[self.START_TIME_COLNAME] = self.df_times[
+            self.df_times[self.BG_START_TIME_COLNAME] = self.df_times[
                 self.REF_TIME_COLNAME
             ].apply(lambda x: x - timedelta(hours=self.parameters.bg_hours_prior))
             self.df_times[self.END_TIME_COLNAME] = self.df_times[
@@ -151,7 +151,7 @@ class VDA:
                     continue
                 
                 for viewing in self.parameters.viewings:
-                    df_protons, df_electrons, _ = epd_load(
+                    df_protons, df_electrons, _ = self._epd_load(
                         sensor=sensor,
                         level="l2",
                         startdate=row[self.BG_START_TIME_COLNAME],
@@ -309,9 +309,9 @@ class VDA:
         4. Background Level
         5. Threshold
         """
-        if type(bg_start) is int:
+        if isinstance(bg_start, (int, np.integer)):
             bg_start = series.index[bg_start]
-        if type(bg_end) is int:
+        if isinstance(bg_end, (int, np.integer)):
             bg_end = series.index[bg_end]
         bg_level = (bg_series := series[bg_start:bg_end]).mean()
         threshold = bg_level + s * bg_series.std()
@@ -354,9 +354,9 @@ class VDA:
         sample_size: float = 0.75,
         limit_averaging: str = "4 min",
     ) -> tuple:
-        if type(bg_start) is int:
+        if isinstance(bg_start, (int, np.integer)):
             bg_start = series.index[bg_start]
-        if type(bg_end) is int:
+        if isinstance(bg_end, (int, np.integer)):
             bg_end = series.index[bg_end]
         df = pd.DataFrame(series)
         df.index.freq = self.parameters.resample_frequency
@@ -647,6 +647,11 @@ class VDA:
         spice.initialize(kernel_files)
 
     def plot(self, savefig: bool = True, returnfig: bool = False):
+        """Fits the VDA line for each event, stores it in self.results and plots it.
+
+        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
+        """
+        figs = []
         for index_event, df_event in self.df_options.groupby(level=0):
             vda_points = []
             t_sun_to_observer = (
@@ -767,8 +772,10 @@ class VDA:
                 filename = f"{date_str}_{particles_str}_{freq_str}.png"
                 plt.savefig(filename)
             plt.show()
-            if returnfig:
-                return fig
+            figs.append(fig)
+
+        if returnfig:
+            return figs[0] if len(figs) == 1 else figs
 
     def plot_bg_selection(self):
         for event_no, event in self.df_grouped.groupby(level=0):

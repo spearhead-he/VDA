@@ -60,13 +60,9 @@ class VDA_parameters:
         sp = {}
         for p, g in self.channel_groups.items():
             for spec in g.values():
-                sensor = spec["sensor"]
-                try:
-                    sp[sensor].append(p)
-                except KeyError:
-                    sp[sensor] = []
-                    sp[sensor].append(p)
-                sp[sensor] = list(set(sp[sensor]))
+                particles = sp.setdefault(spec["sensor"], [])
+                if p not in particles:
+                    particles.append(p)
         return sp
 
     @property

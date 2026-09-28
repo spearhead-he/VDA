@@ -574,18 +574,21 @@ class VDA_nb_displayer:
                                                 color="green",
                                                 alpha=0.3,
                                                 label="BG Sample")
-                                ax.hlines(onset_results["Method Specific"]["bg_level"],
-                                        xlim[0],
-                                        xlim[1],
-                                        color="green",
-                                        linestyles="dashed",
-                                        label=f'BG ({onset_results["Method Specific"]["bg_level"]:.2f})')
-                                ax.hlines(onset_results["Method Specific"]["threshold"],
-                                        xlim[0],
-                                        xlim[1],
-                                        color="red",
-                                        linestyles="dashed",
-                                        label=f'Threshold ({onset_results["Method Specific"]["threshold"]:.2f})')
+                                # bg level and threshold are only provided by the sigma method
+                                method_specific = onset_results["Method Specific"]
+                                if isinstance(method_specific, dict) and "bg_level" in method_specific:
+                                    ax.hlines(method_specific["bg_level"],
+                                            xlim[0],
+                                            xlim[1],
+                                            color="green",
+                                            linestyles="dashed",
+                                            label=f'BG ({method_specific["bg_level"]:.2f})')
+                                    ax.hlines(method_specific["threshold"],
+                                            xlim[0],
+                                            xlim[1],
+                                            color="red",
+                                            linestyles="dashed",
+                                            label=f'Threshold ({method_specific["threshold"]:.2f})')
                                 ax.vlines(onset_results["Onset Time"],
                                         0,
                                         ylim[1],
