@@ -157,6 +157,18 @@ class VDA:
         if self.parameters.view_dfs:
             return self.df_times
 
+    def _iter_sensor_particles(self):
+        """Yields (sensor, particle, particle_prefix) for the selected sensors and particles"""
+        for sensor, particles in self.parameters.sensors_particles.items():
+            for particle in particles:
+                yield sensor, particle, self.PARTICLE_COLUMN_PREFIX[particle]
+
+    def _iter_sensor_particle_viewings(self):
+        """Yields (sensor, particle, viewing, particle_prefix) for the selected sensors, particles and viewings"""
+        for sensor, particle, particle_prefix in self._iter_sensor_particles():
+            for viewing in self.parameters.viewings:
+                yield sensor, particle, viewing, particle_prefix
+
     def _download_data(self, show_progress: bool = True) -> pd.DataFrame:
         df_rows = []
         keys = []
@@ -246,28 +258,25 @@ class VDA:
 
     def group_energy_channels(self):
         self.df_grouped = pd.DataFrame({})
-        for sensor, particles in self.parameters.sensors_particles.items():
-            for particle in particles:
-                particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
-                for viewing in self.parameters.viewings:
-                    df_temp = self._group_channels_de(
-                        self.df_data[sensor][particle][viewing][particle_prefix],
-                        [[f"{particle_prefix}_{c}" for c in spec["channels"]]
-                         for spec in self.parameters.channel_groups[particle].values()
-                         if spec["sensor"] == sensor],
-                        [[self.df_energies.loc[(sensor, f"{particle_prefix}_{c}"), "Bin Width"] for c in spec["channels"]]
-                         for spec in self.parameters.channel_groups[particle].values()
-                         if spec["sensor"] == sensor],
-                        [key for key, spec in self.parameters.channel_groups[particle].items() if spec["sensor"] == sensor]
-                    )
-                    df_temp = pd.concat(
-                        [df_temp],
-                        keys=[(sensor, particle, viewing, particle_prefix)],
-                        axis="columns",
-                    )
-                    self.df_grouped = df_temp.copy() \
-                        if self.df_grouped.empty else \
-                        pd.concat([self.df_grouped, df_temp], axis="columns")
+        for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
+            df_temp = self._group_channels_de(
+                self.df_data[sensor][particle][viewing][particle_prefix],
+                [[f"{particle_prefix}_{c}" for c in spec["channels"]]
+                 for spec in self.parameters.channel_groups[particle].values()
+                 if spec["sensor"] == sensor],
+                [[self.df_energies.loc[(sensor, f"{particle_prefix}_{c}"), "Bin Width"] for c in spec["channels"]]
+                 for spec in self.parameters.channel_groups[particle].values()
+                 if spec["sensor"] == sensor],
+                [key for key, spec in self.parameters.channel_groups[particle].items() if spec["sensor"] == sensor]
+            )
+            df_temp = pd.concat(
+                [df_temp],
+                keys=[(sensor, particle, viewing, particle_prefix)],
+                axis="columns",
+            )
+            self.df_grouped = df_temp.copy() \
+                if self.df_grouped.empty else \
+                pd.concat([self.df_grouped, df_temp], axis="columns")
 
         if self.parameters.view_dfs:
             return self.df_grouped
@@ -412,77 +421,74 @@ class VDA:
     ) -> dict:
         df_onsets = pd.DataFrame({})
         for index_event, df_event in df.groupby(level=0):
-            for sensor, particles in self.parameters.sensors_particles.items():
-                for particle in particles:
-                    particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
-                    for viewing in self.parameters.viewings:
-                        for column_name in (
-                            df_inner := df_event[sensor][particle][viewing][
-                                particle_prefix
+            for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
+                for column_name in (
+                    df_inner := df_event[sensor][particle][viewing][
+                        particle_prefix
+                    ]
+                ).columns:
+                    new_kwargs = deepcopy(kwargs)
+                    new_kwargs["sensor"] = sensor
+                    new_kwargs["particle"] = particle
+                    new_kwargs["viewing"] = viewing
+                    new_kwargs["channel"] = column_name
+                    if "bg_start" in kwargs and type(kwargs["bg_start"]) is pd.Series:
+                        new_kwargs["bg_start"] = kwargs["bg_start"].loc[index_event].to_pydatetime()
+                        new_kwargs["bg_end"] = kwargs["bg_end"].loc[index_event].to_pydatetime()
+                    try:
+                        onset_time, bg_start, bg_stop, method_specific = (
+                            self._onset_detection(
+                                df_inner[column_name].droplevel(
+                                    0, axis="index"
+                                ),
+                                method,
+                                **new_kwargs,
+                            )
+                        )
+                        df_onsets = pd.concat(
+                            [
+                                df_onsets,
+                                pd.DataFrame(
+                                    {
+                                        "Onset Time": [onset_time],
+                                        "Background Start": [bg_start],
+                                        "Background End": [bg_stop],
+                                        "Method Specific": [method_specific],
+                                    },
+                                    index=[
+                                        [index_event],
+                                        [sensor],
+                                        [particle],
+                                        [viewing],
+                                        [particle_prefix],
+                                        [column_name],
+                                    ],
+                                ),
                             ]
-                        ).columns:
-                            new_kwargs = deepcopy(kwargs)
-                            new_kwargs["sensor"] = sensor
-                            new_kwargs["particle"] = particle
-                            new_kwargs["viewing"] = viewing
-                            new_kwargs["channel"] = column_name
-                            if "bg_start" in kwargs and type(kwargs["bg_start"]) is pd.Series:
-                                new_kwargs["bg_start"] = kwargs["bg_start"].loc[index_event].to_pydatetime()
-                                new_kwargs["bg_end"] = kwargs["bg_end"].loc[index_event].to_pydatetime()
-                            try:
-                                onset_time, bg_start, bg_stop, method_specific = (
-                                    self._onset_detection(
-                                        df_inner[column_name].droplevel(
-                                            0, axis="index"
-                                        ),
-                                        method,
-                                        **new_kwargs,
-                                    )
-                                )
-                                df_onsets = pd.concat(
-                                    [
-                                        df_onsets,
-                                        pd.DataFrame(
-                                            {
-                                                "Onset Time": [onset_time],
-                                                "Background Start": [bg_start],
-                                                "Background End": [bg_stop],
-                                                "Method Specific": [method_specific],
-                                            },
-                                            index=[
-                                                [index_event],
-                                                [sensor],
-                                                [particle],
-                                                [viewing],
-                                                [particle_prefix],
-                                                [column_name],
-                                            ],
-                                        ),
-                                    ]
-                                )
-                            except Exception as e:
-                                print(index_event, type(e).__name__, new_kwargs)
-                                df_onsets = pd.concat(
-                                    [
-                                        df_onsets,
-                                        pd.DataFrame(
-                                            {
-                                                "Onset Time": [pd.NaT],
-                                                "Background Start": [pd.NaT],
-                                                "Background End": [pd.NaT],
-                                                "Method Specific": [None],
-                                            },
-                                            index=[
-                                                [index_event],
-                                                [sensor],
-                                                [particle],
-                                                [viewing],
-                                                [particle_prefix],
-                                                [column_name],
-                                            ],
-                                        ),
-                                    ]
-                                )
+                        )
+                    except Exception as e:
+                        print(index_event, type(e).__name__, new_kwargs)
+                        df_onsets = pd.concat(
+                            [
+                                df_onsets,
+                                pd.DataFrame(
+                                    {
+                                        "Onset Time": [pd.NaT],
+                                        "Background Start": [pd.NaT],
+                                        "Background End": [pd.NaT],
+                                        "Method Specific": [None],
+                                    },
+                                    index=[
+                                        [index_event],
+                                        [sensor],
+                                        [particle],
+                                        [viewing],
+                                        [particle_prefix],
+                                        [column_name],
+                                    ],
+                                ),
+                            ]
+                        )
         df_onsets.index.names = [
             self.EVENT_INDEX_NAME,
             "sensor",
@@ -564,35 +570,33 @@ class VDA:
 
     def construct_energy_channels_characteristics(self):
         self.df_channels_chars = pd.DataFrame({})
-        for sensor, particles in self.parameters.sensors_particles.items():
-            for particle in particles:
-                particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
-                for channel in list(
-                    self.df_grouped[sensor][particle][self.parameters.viewings[0]][
-                        particle_prefix
-                    ].columns
-                ):
-                    low_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][0]}"
-                    high_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][-1]}"
-                    low_energy = self.df_energies.loc[sensor, low_energy_key]["Low Energy"]
-                    high_energy = self.df_energies.loc[sensor, high_energy_key]["High Energy"]
+        for sensor, particle, particle_prefix in self._iter_sensor_particles():
+            for channel in list(
+                self.df_grouped[sensor][particle][self.parameters.viewings[0]][
+                    particle_prefix
+                ].columns
+            ):
+                low_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][0]}"
+                high_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][-1]}"
+                low_energy = self.df_energies.loc[sensor, low_energy_key]["Low Energy"]
+                high_energy = self.df_energies.loc[sensor, high_energy_key]["High Energy"]
                     
-                    geo_mean = sqrt(low_energy) * sqrt(high_energy)
-                    inv_beta = 1 / sqrt(
-                        1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
-                    )
-                    self.df_channels_chars = pd.concat(
-                        [
-                            self.df_channels_chars,
-                            pd.DataFrame(
-                                {
-                                    "Geomagnetic Mean": [geo_mean],
-                                    "Inverse Beta": [inv_beta],
-                                },
-                                index=[[sensor], [particle], [channel]],
-                            ),
-                        ]
-                    )
+                geo_mean = sqrt(low_energy) * sqrt(high_energy)
+                inv_beta = 1 / sqrt(
+                    1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
+                )
+                self.df_channels_chars = pd.concat(
+                    [
+                        self.df_channels_chars,
+                        pd.DataFrame(
+                            {
+                                "Geomagnetic Mean": [geo_mean],
+                                "Inverse Beta": [inv_beta],
+                            },
+                            index=[[sensor], [particle], [channel]],
+                        ),
+                    ]
+                )
         self.df_channels_chars.index.names = ["sensor", "particle", "channel"]
 
         if self.parameters.view_dfs:
