@@ -573,15 +573,16 @@ class VDA:
 
         spice.initialize(kernel_files)
 
+    @staticmethod
+    def _format_timedelta(td) -> str:
+        return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
+
     def print_results(self, events=None) -> None:
         """Prints the VDA results of the given event number(s), or of all events if None."""
         if events is None:
             events = self.results.index
         elif not isinstance(events, (list, tuple, pd.Index)):
             events = [events]
-
-        def format_timedelta(td):
-            return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
 
         for index_event in events:
             time_start = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
@@ -591,17 +592,14 @@ class VDA:
             if pd.isna(res["APL"]):
                 print("    No results (not enough onset points)\n")
                 continue
-            print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
-            print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
+            print(f"    Release Time : {res['Release Time']} ± {self._format_timedelta(res['Release Time Error'])}")
+            print(f"    Extra Time   : {self._format_timedelta(res['Extra Time'])}")
             print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
 
-    def plot(self, savefig: bool = True, returnfig: bool = False):
-        """Fits the VDA line for each event, stores it in self.results and plots it.
-
-        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
-        """
-        figs = []
-        for index_event, df_event in self.df_options.groupby(level=0):
+    def compute_vda(self):
+        """Fits the VDA line of each event and stores the results in self.results"""
+        self._vda_fits = {}
+        for index_event in self.df_options.index.unique(level=0):
             vda_points = []
             t_sun_to_observer = (
                 spice.get_body(
@@ -658,7 +656,7 @@ class VDA:
                 a, b = np.polyfit(inv_betas, timestamps, 1)
                 a_error = 0
                 b_error = 0
-            
+
             self.results.loc[index_event] = {
                 "Release Time": datetime.fromtimestamp(b + t_sun_to_observer).strftime('%Y-%m-%d %H:%M:%S'),
                 "Release Time Error": timedelta(seconds=b_error),
@@ -666,6 +664,25 @@ class VDA:
                 "APL": a / t_sun_to_observer,
                 "APL Error": a_error / t_sun_to_observer,
             }
+            self._vda_fits[index_event] = {
+                "inv_betas": inv_betas,
+                "timestamps": timestamps,
+                "a": a,
+                "b": b,
+                "b_error": b_error,
+            }
+
+    def plot_vda(self, savefig: bool = True, returnfig: bool = False):
+        """Prints the results and plots the VDA fit of each event computed by compute_vda.
+
+        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
+        """
+        figs = []
+        for index_event, fit in self._vda_fits.items():
+            inv_betas = fit["inv_betas"]
+            timestamps = fit["timestamps"]
+            a, b, b_error = fit["a"], fit["b"], fit["b_error"]
+            res = self.results.loc[index_event]
             self.print_results(index_event)
 
             fig, ax = plt.subplots(figsize=(10, 8))
@@ -696,19 +713,19 @@ class VDA:
                 [],
                 [],
                 alpha=0,
-                label=f"Extra Time = {str(timedelta(seconds=t_sun_to_observer)).split('.')[0]}",
+                label=f"Extra Time = {self._format_timedelta(res['Extra Time'])}",
             )
             plt.plot(
                 [],
                 [],
                 alpha=0,
-                label=f"Release Time = {datetime.fromtimestamp(b + t_sun_to_observer).strftime('%Y-%m-%d %H:%M:%S')} +/- {str(timedelta(seconds=b_error)).split('.')[0]}",
+                label=f"Release Time = {res['Release Time']} +/- {self._format_timedelta(res['Release Time Error'])}",
             )
             plt.plot(
                 [],
                 [],
                 alpha=0,
-                label=f"APL = {a / t_sun_to_observer:.2f} +/- {a_error / t_sun_to_observer:.2f}",
+                label=f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
             )
             plt.legend(bbox_to_anchor=(1, 0.6), loc="upper left")
             plt.tight_layout()
@@ -726,6 +743,14 @@ class VDA:
 
         if returnfig:
             return figs[0] if len(figs) == 1 else figs
+
+    def plot(self, savefig: bool = True, returnfig: bool = False):
+        """Fits the VDA line of each event, stores it in self.results, prints the results and plots them.
+
+        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
+        """
+        self.compute_vda()
+        return self.plot_vda(savefig, returnfig)
 
     def plot_bg_selection(self):
         for event_no, event in self.df_grouped.groupby(level=0):
