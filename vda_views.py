@@ -2,9 +2,7 @@ import html
 import pandas as pd
 from IPython.display import clear_output, display
 from ipywidgets import widgets
-from math import ceil
 from matplotlib import pyplot as plt
-from matplotlib import dates as mdates
 
 from vda_tool_configuration import *
 
@@ -36,22 +34,6 @@ class VDA_nb_displayer:
             par[str(index[-1])] = new_value
         except TypeError:
             par[int(index[-1])] = new_value
-
-    def _change_parameter_df_index(self, parameter, index, col, new_value, index_sep=None):
-        if index_sep is None:
-            index = [index]
-        else:
-            index = index.split(index_sep)
-        curated_indices = []
-        par = self.vda.parameters.__getattribute__(parameter)
-        for i in index:
-            try:
-                par = par.loc[str(i)]
-                curated_indices.append(str(i))
-            except KeyError:
-                par = par.loc[int(i)]
-                curated_indices.append(int(i))
-        self.vda.parameters.__getattribute__(parameter).loc[tuple(curated_indices), col] = new_value
 
     def _delete_parameter_index(self, parameter, index, cascade=False, index_sep=None):
         if index_sep is None:
@@ -593,6 +575,102 @@ class VDA_nb_displayer:
                   names="value")
         return w
 
+    def _display_onset_selection(self):
+        """Plot of the detected onsets of one channel with the selection of its viewing.
+
+        The channels with onsets are selected with the event and channel dropdowns or the previous / next buttons.
+        """
+        vda = self.vda
+        selected_onsets = vda.parameters.selected_onsets
+        # (event, sensor, particle, prefix, channel) of the channels with onsets
+        keys = list(selected_onsets.index)
+        out_plot = widgets.Output()
+        wgt_status = widgets.HTML()
+
+        def channel_label(key):
+            _, sensor, particle, particle_prefix, channel = key
+            low_energy, high_energy = vda._channel_energy_range(sensor, particle, particle_prefix, channel)
+            return f"{sensor.upper()} {particle} {low_energy:.2f}-{high_energy:.2f} MeV"
+
+        events = list(dict.fromkeys(key[0] for key in keys))
+        wgt_event = widgets.Dropdown(
+            options=[(f"Event {event_no} ({vda.df_times.loc[event_no, vda.START_TIME_COLNAME]:%Y-%m-%d %H:%M})", event_no) for event_no in events],
+            description="Event:",
+            style=self.WIDGETS_STYLE,
+        )
+        wgt_channel = widgets.Dropdown(description="Channel:", style=self.WIDGETS_STYLE)
+        wgt_viewing = widgets.Dropdown(description="Selected viewing:", style=self.WIDGETS_STYLE)
+        btn_previous = widgets.Button(description="◀ Previous")
+        btn_next = widgets.Button(description="Next ▶")
+        # changes made by the widget itself are not applied as user selections
+        updating = {"flag": False}
+
+        def current_key():
+            return wgt_channel.value
+
+        def update_status():
+            key = current_key()
+            event_keys = [k for k in keys if k[0] == key[0]]
+            n_selected = sum(selected_onsets.loc[k, "Viewing"] is not None for k in event_keys)
+            wgt_status.value = (
+                f"Event {key[0]}: {n_selected} of {len(event_keys)} channels with a selected viewing"
+                f" | channel {keys.index(key) + 1} of {len(keys)}"
+            )
+            btn_previous.disabled = keys.index(key) == 0
+            btn_next.disabled = keys.index(key) == len(keys) - 1
+
+        def redraw():
+            key = current_key()
+            with out_plot:
+                clear_output(wait=True)
+                fig = vda._plot_channel_onsets(*key, selected_viewing=selected_onsets.loc[key, "Viewing"])
+                plt.show()
+                plt.close(fig)
+
+        def show_key(key):
+            updating["flag"] = True
+            wgt_event.value = key[0]
+            wgt_channel.options = [(channel_label(k), k) for k in keys if k[0] == key[0]]
+            wgt_channel.value = key
+            viewings_with_onsets = [v for v in vda.parameters.viewings if v in vda.df_options.loc[key].index]
+            wgt_viewing.options = [("None", None)] + [(v, v) for v in viewings_with_onsets]
+            wgt_viewing.value = selected_onsets.loc[key, "Viewing"]
+            updating["flag"] = False
+            update_status()
+            redraw()
+
+        def on_event(traitlet):
+            if not updating["flag"]:
+                show_key(next(k for k in keys if k[0] == traitlet["new"]))
+
+        def on_channel(traitlet):
+            if not updating["flag"] and traitlet["new"] is not None:
+                show_key(traitlet["new"])
+
+        def on_viewing(traitlet):
+            if updating["flag"]:
+                return
+            selected_onsets.loc[current_key(), "Viewing"] = traitlet["new"]
+            update_status()
+            redraw()
+
+        def move(step):
+            i = keys.index(current_key()) + step
+            if 0 <= i < len(keys):
+                show_key(keys[i])
+
+        wgt_event.observe(on_event, names="value")
+        wgt_channel.observe(on_channel, names="value")
+        wgt_viewing.observe(on_viewing, names="value")
+        btn_previous.on_click(lambda _: move(-1))
+        btn_next.on_click(lambda _: move(1))
+        show_key(keys[0])
+        return widgets.VBox([
+            widgets.HBox([wgt_event, wgt_channel, btn_previous, btn_next]),
+            widgets.HBox([wgt_viewing, wgt_status]),
+            out_plot,
+        ])
+
     def display_view_toggle(self):
         w = widgets.Checkbox(value=self.vda.parameters.view_dfs, 
                              description="Display the produced DataFrames", 
@@ -607,8 +685,9 @@ class VDA_nb_displayer:
         temp_df = self.vda.df_options.droplevel(level=5)
         df_index = temp_df.index[~temp_df.index.duplicated(keep="first")]
         self.vda.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
-        if self.vda.parameters.onset_selection == 0:
-            # Use all (the first viewing with an onset, in the order of the viewings)
+        if self.vda.parameters.onset_selection in (0, 1):
+            # Use all (the first viewing with an onset, in the order of the viewings).
+            # Interactive selection starts from the same viewings
             for i, _ in self.vda.parameters.selected_onsets.iterrows():
                 for v in self.vda.parameters.viewings:
                     try:
@@ -617,122 +696,8 @@ class VDA_nb_displayer:
                         continue
                     self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
                     break
-        elif self.vda.parameters.onset_selection == 1:
-            time_formatter = mdates.DateFormatter("%H:%M")
-            for event_no, event in self.vda.df_grouped.groupby(level=0):
-                temp_df = event.droplevel(0)
-                for sensor, particle, particle_prefix in self.vda._iter_sensor_particles():
-                    columns = temp_df[sensor][particle][self.vda.parameters.viewings[0]][particle_prefix].columns
-                    for column in columns:
-                        onset_found = False
-                        nplots = len(self.vda.parameters.viewings)
-                        ncols = 3
-                        if nplots <= ncols:
-                            nrows = 1
-                            ncols = nplots
-                        else:
-                            nrows = ceil(nplots/ncols)
-                        fig, axs = plt.subplots(nrows,
-                                                ncols,
-                                                figsize=(14, 8),
-                                                dpi=300)
-                        try:
-                            axs_flat = axs.flatten()
-                        except AttributeError:
-                            axs_flat = [axs]
-                        for ax in axs_flat[len(self.vda.parameters.viewings):]:
-                            ax.axis("off")
-                        for ax, viewing in zip(axs_flat, self.vda.parameters.viewings):
-                            ax.set_title(viewing)
-                            try:
-                                onset_results = self.vda.df_onsets_existing.loc[(event_no,
-                                                                            sensor,
-                                                                            particle,
-                                                                            viewing,
-                                                                            particle_prefix,
-                                                                            column)]
-                                onset_found = True
-                            except KeyError:
-                                continue
-
-                            ax.plot(temp_df[sensor][particle][viewing][particle_prefix][column].fillna(0).ffill(), label="Data")
-                            xlim = ax.get_xlim()
-                            ylim = ax.get_ylim()
-                            ax.fill_betweenx([0, ylim[1]],
-                                            onset_results["Background Start"],
-                                            onset_results["Background End"],
-                                            color="green",
-                                            alpha=0.3,
-                                            label="BG Sample")
-                            # bg level and threshold are only provided by the sigma method
-                            method_specific = onset_results["Method Specific"]
-                            if isinstance(method_specific, dict) and "bg_level" in method_specific:
-                                ax.hlines(method_specific["bg_level"],
-                                        xlim[0],
-                                        xlim[1],
-                                        color="green",
-                                        linestyles="dashed",
-                                        label=f'BG ({method_specific["bg_level"]:.2f})')
-                                ax.hlines(method_specific["threshold"],
-                                        xlim[0],
-                                        xlim[1],
-                                        color="red",
-                                        linestyles="dashed",
-                                        label=f'Threshold ({method_specific["threshold"]:.2f})')
-                            ax.vlines(onset_results["Onset Time"],
-                                    0,
-                                    ylim[1],
-                                    color="purple",
-                                    linestyles="dashed",
-                                    label=f'Onset ({onset_results["Onset Time"].strftime("%H:%M")})')
-
-                            ax.set_xlim(xlim)
-                            ax.xaxis.set_major_formatter(time_formatter)
-                            # ax.set_ylim(top=ylim[1])
-                            ax.set_yscale("log")
-
-                            ax.legend()
-                            
-                        if not onset_found:
-                            plt.close()
-                            continue
-
-                        low_energy, high_energy = self.vda._channel_energy_range(sensor, particle, particle_prefix, column)
-                        energy_range_str = f"{low_energy:.2f}-{high_energy:.2f}"
-                            
-                        twgt = widgets.Label(
-                            value=f"Event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV):",
-                            style=self.WIDGETS_STYLE,
-                            layout=self.WIDGETS_LAYOUT
-                        )
-                        wrb = widgets.RadioButtons(
-                            options=[None] + [v for v in self.vda.parameters.viewings 
-                                                if v in self.vda.df_options.loc[(event_no,
-                                                                            sensor,
-                                                                            particle,
-                                                                            particle_prefix,
-                                                                            column)].index],
-                            index=0,
-                            description=f"{event_no}|{sensor}|{particle}|{particle_prefix}|{column}",
-                            orientation="horizontal",
-                            style=self.WIDGETS_STYLE,
-                            layout=self.WIDGETS_LAYOUT
-                        )
-                        wrb.observe(
-                            lambda traitlet: self._change_parameter_df_index(
-                                "selected_onsets",
-                                traitlet["owner"].description,
-                                "Viewing",
-                                traitlet["new"],
-                                "|",
-                            ),
-                            names="value",
-                        )
-                        display(widgets.HBox([twgt, wrb]))
-
-                        plt.suptitle(f"Detected onsets for event {event_no} ({temp_df.index[0].to_pydatetime().strftime('%Y-%m-%d')}) | {sensor}/{particle} ({energy_range_str} MeV)")
-                        plt.tight_layout()
-                        plt.show()
+        if self.vda.parameters.onset_selection == 1:
+            return self._display_onset_selection()
         elif self.vda.parameters.onset_selection == 2:
             # # Custom list
             # df_selections = pd.DataFrame({})

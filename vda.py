@@ -3,7 +3,7 @@ import pandas as pd
 import astropy.units as u
 import astropy.constants as const
 
-from math import sqrt
+from math import ceil, sqrt
 from os import getcwd
 from datetime import datetime, timedelta
 
@@ -856,6 +856,63 @@ class VDA:
         ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
         ax.set_xlabel("Time (UTC)")
         ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize="small")
+
+    def _plot_channel_onsets(self, event_no, sensor, particle, particle_prefix, channel, selected_viewing=None):
+        """Plots the detected onsets of a grouped channel of the event, one subplot per viewing"""
+        viewings = self.parameters.viewings
+        temp_df = self.df_grouped.loc[event_no]
+        ncols = min(len(viewings), 3)
+        nrows = ceil(len(viewings) / ncols)
+        fig = plt.figure(figsize=(14, 4.5 * nrows + 1), dpi=300, layout="constrained")
+        # the last row holds the legend of all the viewings
+        grid = fig.add_gridspec(nrows + 1, ncols, height_ratios=[1] * nrows + [0.15])
+        axs_flat = [fig.add_subplot(grid[row, col]) for row in range(nrows) for col in range(ncols)]
+        ax_legend = fig.add_subplot(grid[nrows, :])
+        ax_legend.axis("off")
+        for ax in axs_flat[len(viewings):]:
+            ax.axis("off")
+        for ax, viewing in zip(axs_flat, viewings):
+            ax.set_title(f"{viewing} (selected)" if viewing == selected_viewing else viewing,
+                         fontweight="bold" if viewing == selected_viewing else "normal")
+            try:
+                onset_results = self.df_onsets_existing.loc[(event_no, sensor, particle, viewing, particle_prefix, channel)]
+            except KeyError:
+                ax.text(0.5, 0.5, "No onset", transform=ax.transAxes, ha="center", va="center")
+                continue
+
+            ax.plot(temp_df[sensor][particle][viewing][particle_prefix][channel].fillna(0).ffill(), label="Data")
+            ax.set_yscale("log")
+            ax.axvspan(onset_results["Background Start"], onset_results["Background End"],
+                       color="green", alpha=0.3, label="BG sample")
+            values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
+            # bg level and threshold are only provided by the sigma method
+            method_specific = onset_results["Method Specific"]
+            if isinstance(method_specific, dict) and "bg_level" in method_specific:
+                ax.axhline(method_specific["bg_level"], color="green", linestyle="dashed", label="BG level")
+                ax.axhline(method_specific["threshold"], color="red", linestyle="dashed", label="Threshold")
+                values += [f"BG {method_specific['bg_level']:.3g}", f"Threshold {method_specific['threshold']:.3g}"]
+            ax.axvline(onset_results["Onset Time"], color="purple", linestyle="dashed", label="Onset")
+            ax.text(0.98, 0.03, "\n".join(values), transform=ax.transAxes, ha="right", va="bottom",
+                    fontsize="x-small", bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"})
+
+            ax.set_xlim(temp_df.index[0], temp_df.index[-1])
+            locator = mdates.AutoDateLocator(maxticks=5)
+            ax.xaxis.set_major_locator(locator)
+            ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+
+        # one legend for all the viewings, from the first subplot with an onset
+        for ax in axs_flat:
+            handles, labels = ax.get_legend_handles_labels()
+            if handles:
+                ax_legend.legend(handles, labels, loc="center", ncols=len(handles), fontsize="small", frameon=False)
+                break
+
+        low_energy, high_energy = self._channel_energy_range(sensor, particle, particle_prefix, channel)
+        fig.suptitle(
+            f"Detected onsets for event {event_no} ({temp_df.index[0]:%Y-%m-%d}) | "
+            f"{sensor}/{particle} ({low_energy:.2f}-{high_energy:.2f} MeV)"
+        )
+        return fig
 
     def plot_bg_selection(self):
         """Plots the grouped channels of each event with its background window"""
