@@ -4,11 +4,10 @@ from datetime import datetime, timezone
 class VDA_parameters:
 
     def __init__(self):
-        self.input_type: int = 0
+        # File with the events (datetime ranges or reference times). If empty, date_start and date_end are used
+        self.input_filepath: str = ""
         self.date_start: datetime = datetime(2021, 10, 28, 14, 0)
         self.date_end: datetime = datetime(2021, 10, 28, 20, 0)
-        self.date_range_filepath: str = "examples/datetime_range_example.csv"
-        self.reference_times_filepath: str = "examples/reference_times_example.csv"
         self.bg_hours_prior: int = 2
         self.bg_hours_after: int = 5
         self.load_data: bool = False

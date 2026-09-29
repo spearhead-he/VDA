@@ -35,7 +35,8 @@ class VDA:
     BG_END_TIME_COLNAME = "BG End"
     END_TIME_COLNAME = "End Time"
 
-    # Accepted columns of the datetime ranges file, after the event number column
+    # Accepted columns of the input file, after the event number column
+    REFERENCE_TIMES_FILE_LAYOUT = (REF_TIME_COLNAME,)
     DATE_RANGE_FILE_LAYOUTS = (
         # data range only, the default background window is used
         (START_TIME_COLNAME, END_TIME_COLNAME),
@@ -71,70 +72,68 @@ class VDA:
     def _epd_load(self, *args, **kwargs):
         return epd_load(*args, **kwargs)
 
-    def _read_date_range_file(self, filepath: str) -> pd.DataFrame:
+    def _read_times_file(self, filepath: str) -> pd.DataFrame:
+        """Reads the events file. Its type (datetime ranges or reference times) is deduced from its columns"""
         df = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True)
         df.columns = df.columns.str.strip()
         df.index.name = self.EVENT_INDEX_NAME
-        if set(df.columns) not in [set(layout) for layout in self.DATE_RANGE_FILE_LAYOUTS]:
-            layouts = "\n".join(
-                f"    {self.EVENT_INDEX_NAME}, {', '.join(layout)}" for layout in self.DATE_RANGE_FILE_LAYOUTS
-            )
+        layouts = (self.REFERENCE_TIMES_FILE_LAYOUT,) + self.DATE_RANGE_FILE_LAYOUTS
+        if set(df.columns) not in [set(layout) for layout in layouts]:
+            accepted = "\n".join(f"    {self.EVENT_INDEX_NAME}, {', '.join(layout)}" for layout in layouts)
             raise ValueError(
                 f"Unexpected columns in {filepath}: {', '.join(df.columns)}\n"
-                f"Accepted columns:\n{layouts}"
+                f"Accepted columns:\n{accepted}"
             )
         df = df.apply(pd.to_datetime)
-        if self.BG_END_TIME_COLNAME in df.columns and self.BG_START_TIME_COLNAME not in df.columns:
+        if self.REF_TIME_COLNAME in df.columns:
+            df[self.START_TIME_COLNAME] = df[self.REF_TIME_COLNAME] - timedelta(hours=self.parameters.bg_hours_prior)
+            df[self.END_TIME_COLNAME] = df[self.REF_TIME_COLNAME] + timedelta(hours=self.parameters.bg_hours_after)
+        elif self.BG_END_TIME_COLNAME in df.columns and self.BG_START_TIME_COLNAME not in df.columns:
             df[self.BG_START_TIME_COLNAME] = df[self.START_TIME_COLNAME]
-        for col in (self.BG_START_TIME_COLNAME, self.BG_END_TIME_COLNAME):
+        for col in (self.BG_START_TIME_COLNAME, self.BG_END_TIME_COLNAME, self.REF_TIME_COLNAME):
             if col not in df.columns:
                 df[col] = pd.NaT
-        return df[[
-            self.START_TIME_COLNAME,
-            self.BG_START_TIME_COLNAME,
-            self.BG_END_TIME_COLNAME,
-            self.END_TIME_COLNAME,
-        ]]
+        return df
+
+    # Parameters replaced by input_filepath in v0.3.0
+    REMOVED_INPUT_PARAMETERS = ("input_type", "date_range_filepath", "reference_times_filepath")
 
     def construct_times_df(self):
         """Creates self.df_times with the data range and background window of each event.
 
+        The events are read from parameters.input_filepath, or if it is empty, a single event
+        from parameters.date_start to parameters.date_end is used.
         Events without a background window (BG Start / BG End are NaT) use the default one.
         """
-        if self.parameters.input_type == 0:
+        for name in self.REMOVED_INPUT_PARAMETERS:
+            if hasattr(self.parameters, name):
+                raise ValueError(
+                    f"The {name} parameter was removed in v0.3.0. Set input_filepath to the events file "
+                    f"(its type is deduced from its columns), or leave it empty for a single date range."
+                )
+
+        if self.parameters.input_filepath:
+            self.df_times = self._read_times_file(self.parameters.input_filepath)
+        else:
             self.df_times = pd.DataFrame(
                 {
                     self.START_TIME_COLNAME: [self.parameters.date_start],
                     self.BG_START_TIME_COLNAME: [pd.NaT],
                     self.BG_END_TIME_COLNAME: [pd.NaT],
                     self.END_TIME_COLNAME: [self.parameters.date_end],
+                    self.REF_TIME_COLNAME: [pd.NaT],
                 },
                 index=pd.Index([1], name=self.EVENT_INDEX_NAME),
             )
-        elif self.parameters.input_type == 1:
-            self.df_times = self._read_date_range_file(self.parameters.date_range_filepath)
-        elif self.parameters.input_type == 2:
-            self.df_times = pd.read_csv(
-                self.parameters.reference_times_filepath,
-                sep=",",
-                header=0,
-                names=[self.EVENT_INDEX_NAME, self.REF_TIME_COLNAME],
-                index_col=0,
-            )
-            self.df_times[self.REF_TIME_COLNAME] = pd.to_datetime(
-                self.df_times[self.REF_TIME_COLNAME]
-            )
-            self.df_times[self.START_TIME_COLNAME] = self.df_times[
-                self.REF_TIME_COLNAME
-            ].apply(lambda x: x - timedelta(hours=self.parameters.bg_hours_prior))
-            self.df_times[self.BG_START_TIME_COLNAME] = pd.NaT
-            self.df_times[self.BG_END_TIME_COLNAME] = pd.NaT
-            self.df_times[self.END_TIME_COLNAME] = self.df_times[
-                self.REF_TIME_COLNAME
-            ].apply(lambda x: x + timedelta(hours=self.parameters.bg_hours_after))
-            self.df_times = self.df_times.drop(self.REF_TIME_COLNAME, axis="columns")
+        self.df_times = self.df_times[[
+            self.START_TIME_COLNAME,
+            self.BG_START_TIME_COLNAME,
+            self.BG_END_TIME_COLNAME,
+            self.END_TIME_COLNAME,
+            self.REF_TIME_COLNAME,
+        ]]
 
-        for col in (self.BG_START_TIME_COLNAME, self.BG_END_TIME_COLNAME):
+        for col in (self.BG_START_TIME_COLNAME, self.BG_END_TIME_COLNAME, self.REF_TIME_COLNAME):
             self.df_times[col] = self.df_times[col].astype(self.df_times[self.START_TIME_COLNAME].dtype)
 
         self._bg_sources = {

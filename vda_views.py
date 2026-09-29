@@ -75,115 +75,81 @@ class VDA_nb_displayer:
             else:
                 break
 
-    def display_input_type(self):
-        w = widgets.Dropdown(
-            options=[
-                ("Custom datetime range (1 event)", 0),
-                ("File with datetime ranges", 1),
-                ("File with reference datetimes", 2),
-            ],
-            value=self.vda.parameters.input_type,
-            description="How the events will be provided:",
+    def display_input_file(self):
+        w = widgets.Text(
+            value=self.vda.parameters.input_filepath,
+            placeholder="Path to .csv - Leave blank to use the datetime range below",
+            description="Events file:",
             disabled=False,
             style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
         )
         w.observe(
-            lambda traitlet: self._change_parameter("input_type", traitlet["new"]),
+            lambda traitlet: self._change_parameter("input_filepath", traitlet["new"]),
             names="value",
         )
         return w
 
     def display_date_range(self):
-        if self.vda.parameters.input_type == 0:
-            wgt_dt_start = widgets.widget_datetime.NaiveDatetimePicker(
-                value=self.vda.parameters.date_start,
-                description="Datetime range start:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_dt_start.observe(
-                lambda traitlet: self._change_parameter("date_start", traitlet["new"]),
-                names="value",
-            )
-            wgt_dt_end = widgets.widget_datetime.NaiveDatetimePicker(
-                value=self.vda.parameters.date_end,
-                description="Datetime range end:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_dt_end.observe(
-                lambda traitlet: self._change_parameter("date_end", traitlet["new"]),
-                names="value",
-            )
-            displaybox = widgets.HBox([wgt_dt_start, wgt_dt_end])
-        elif self.vda.parameters.input_type == 1:
-            wgt_dt_range_filepath = widgets.Text(
-                value=self.vda.parameters.date_range_filepath,
-                placeholder="Path to .csv",
-                description="Datetime range file:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_dt_range_filepath.observe(
-                lambda traitlet: self._change_parameter(
-                    "date_range_filepath", traitlet["new"]
-                ),
-                names="value",
-            )
-            displaybox = wgt_dt_range_filepath
-        elif self.vda.parameters.input_type == 2:
-            wgt_ref_times_filepath = widgets.Text(
-                value=self.vda.parameters.reference_times_filepath,
-                placeholder="Path to .csv",
-                description="Reference times file:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_ref_times_filepath.observe(
-                lambda traitlet: self._change_parameter(
-                    "reference_times_filepath", traitlet["new"]
-                ),
-                names="value",
-            )
-            wgt_tw_prior = widgets.IntSlider(
-                value=self.vda.parameters.bg_hours_prior,
-                min=0,
-                max=12,
-                step=1,
-                description="Hours prior to the reference time:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_tw_prior.observe(
-                lambda traitlet: self._change_parameter(
-                    "bg_hours_prior", traitlet["new"]
-                ),
-                names="value",
-            )
-            wgt_tw_after = widgets.IntSlider(
-                value=self.vda.parameters.bg_hours_after,
-                min=0,
-                max=12,
-                step=1,
-                description="Hours after the reference time:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_tw_after.observe(
-                lambda traitlet: self._change_parameter(
-                    "bg_hours_after", traitlet["new"]
-                ),
-                names="value",
-            )
-            displaybox = widgets.VBox([wgt_ref_times_filepath, wgt_tw_prior, wgt_tw_after])
-
-        return displaybox
+        wgt_dt_start = widgets.widget_datetime.NaiveDatetimePicker(
+            value=self.vda.parameters.date_start,
+            description="Datetime range start:",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        wgt_dt_start.observe(
+            lambda traitlet: self._change_parameter("date_start", traitlet["new"]),
+            names="value",
+        )
+        wgt_dt_end = widgets.widget_datetime.NaiveDatetimePicker(
+            value=self.vda.parameters.date_end,
+            description="Datetime range end:",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        wgt_dt_end.observe(
+            lambda traitlet: self._change_parameter("date_end", traitlet["new"]),
+            names="value",
+        )
+        wgt_tw_prior = widgets.IntSlider(
+            value=self.vda.parameters.bg_hours_prior,
+            min=0,
+            max=12,
+            step=1,
+            description="Hours prior to the reference time (files with reference times):",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        wgt_tw_prior.observe(
+            lambda traitlet: self._change_parameter(
+                "bg_hours_prior", traitlet["new"]
+            ),
+            names="value",
+        )
+        wgt_tw_after = widgets.IntSlider(
+            value=self.vda.parameters.bg_hours_after,
+            min=0,
+            max=12,
+            step=1,
+            description="Hours after the reference time (files with reference times):",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        wgt_tw_after.observe(
+            lambda traitlet: self._change_parameter(
+                "bg_hours_after", traitlet["new"]
+            ),
+            names="value",
+        )
+        return widgets.VBox([
+            widgets.HBox([wgt_dt_start, wgt_dt_end]),
+            wgt_tw_prior,
+            wgt_tw_after,
+        ])
 
     def display_load_data_option(self):
         w = widgets.Checkbox(
