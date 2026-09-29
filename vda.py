@@ -30,9 +30,19 @@ class VDA:
     ############### Reference Times DF ###############
     EVENT_INDEX_NAME = "Event No"
     REF_TIME_COLNAME = "Reference Time"
+    START_TIME_COLNAME = "Start Time"
     BG_START_TIME_COLNAME = "BG Start"
     BG_END_TIME_COLNAME = "BG End"
     END_TIME_COLNAME = "End Time"
+
+    # Accepted columns of the datetime ranges file, after the event number column
+    DATE_RANGE_FILE_LAYOUTS = (
+        # data range only, the default background window is used
+        (START_TIME_COLNAME, END_TIME_COLNAME),
+        # "Start Time" is also used as the background start
+        (START_TIME_COLNAME, BG_END_TIME_COLNAME, END_TIME_COLNAME),
+        (START_TIME_COLNAME, BG_START_TIME_COLNAME, BG_END_TIME_COLNAME, END_TIME_COLNAME),
+    )
 
     ############### Particle Data ###############
     @property
@@ -61,37 +71,48 @@ class VDA:
     def _epd_load(self, *args, **kwargs):
         return epd_load(*args, **kwargs)
 
+    def _read_date_range_file(self, filepath: str) -> pd.DataFrame:
+        df = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True)
+        df.columns = df.columns.str.strip()
+        df.index.name = self.EVENT_INDEX_NAME
+        if set(df.columns) not in [set(layout) for layout in self.DATE_RANGE_FILE_LAYOUTS]:
+            layouts = "\n".join(
+                f"    {self.EVENT_INDEX_NAME}, {', '.join(layout)}" for layout in self.DATE_RANGE_FILE_LAYOUTS
+            )
+            raise ValueError(
+                f"Unexpected columns in {filepath}: {', '.join(df.columns)}\n"
+                f"Accepted columns:\n{layouts}"
+            )
+        df = df.apply(pd.to_datetime)
+        if self.BG_END_TIME_COLNAME in df.columns and self.BG_START_TIME_COLNAME not in df.columns:
+            df[self.BG_START_TIME_COLNAME] = df[self.START_TIME_COLNAME]
+        for col in (self.BG_START_TIME_COLNAME, self.BG_END_TIME_COLNAME):
+            if col not in df.columns:
+                df[col] = pd.NaT
+        return df[[
+            self.START_TIME_COLNAME,
+            self.BG_START_TIME_COLNAME,
+            self.BG_END_TIME_COLNAME,
+            self.END_TIME_COLNAME,
+        ]]
+
     def construct_times_df(self):
+        """Creates self.df_times with the data range and background window of each event.
+
+        Events without a background window (BG Start / BG End are NaT) use the default one.
+        """
         if self.parameters.input_type == 0:
             self.df_times = pd.DataFrame(
                 {
-                    self.BG_START_TIME_COLNAME: [self.parameters.date_start],
+                    self.START_TIME_COLNAME: [self.parameters.date_start],
+                    self.BG_START_TIME_COLNAME: [pd.NaT],
+                    self.BG_END_TIME_COLNAME: [pd.NaT],
                     self.END_TIME_COLNAME: [self.parameters.date_end],
                 },
-                index=[1],
+                index=pd.Index([1], name=self.EVENT_INDEX_NAME),
             )
         elif self.parameters.input_type == 1:
-            self.df_times = pd.read_csv(
-                self.parameters.date_range_filepath,
-                sep=",",
-                header=0,
-                names=[
-                    self.EVENT_INDEX_NAME,
-                    self.BG_START_TIME_COLNAME,
-                    self.BG_END_TIME_COLNAME,
-                    self.END_TIME_COLNAME
-                ],
-                index_col=0,
-            )
-            self.df_times[self.BG_START_TIME_COLNAME] = pd.to_datetime(
-                self.df_times[self.BG_START_TIME_COLNAME]
-            )
-            self.df_times[self.BG_END_TIME_COLNAME] = pd.to_datetime(
-                self.df_times[self.BG_END_TIME_COLNAME]
-            )
-            self.df_times[self.END_TIME_COLNAME] = pd.to_datetime(
-                self.df_times[self.END_TIME_COLNAME]
-            )
+            self.df_times = self._read_date_range_file(self.parameters.date_range_filepath)
         elif self.parameters.input_type == 2:
             self.df_times = pd.read_csv(
                 self.parameters.reference_times_filepath,
@@ -103,16 +124,55 @@ class VDA:
             self.df_times[self.REF_TIME_COLNAME] = pd.to_datetime(
                 self.df_times[self.REF_TIME_COLNAME]
             )
-            self.df_times[self.BG_START_TIME_COLNAME] = self.df_times[
+            self.df_times[self.START_TIME_COLNAME] = self.df_times[
                 self.REF_TIME_COLNAME
             ].apply(lambda x: x - timedelta(hours=self.parameters.bg_hours_prior))
+            self.df_times[self.BG_START_TIME_COLNAME] = pd.NaT
+            self.df_times[self.BG_END_TIME_COLNAME] = pd.NaT
             self.df_times[self.END_TIME_COLNAME] = self.df_times[
                 self.REF_TIME_COLNAME
             ].apply(lambda x: x + timedelta(hours=self.parameters.bg_hours_after))
             self.df_times = self.df_times.drop(self.REF_TIME_COLNAME, axis="columns")
 
+        for col in (self.BG_START_TIME_COLNAME, self.BG_END_TIME_COLNAME):
+            self.df_times[col] = self.df_times[col].astype(self.df_times[self.START_TIME_COLNAME].dtype)
+
+        self._bg_sources = {
+            index_event: "input file"
+            for index_event, row in self.df_times.iterrows()
+            if pd.notna(row[self.BG_START_TIME_COLNAME]) and pd.notna(row[self.BG_END_TIME_COLNAME])
+        }
+
         if self.parameters.view_dfs:
             return self.df_times
+
+    def _bg_window(self, index_event, times: pd.DatetimeIndex) -> tuple:
+        """Returns the (start, end) of the background window of the event.
+
+        The window in self.df_times (from the input file or set_bg_window) is used if present,
+        otherwise the bg_start / bg_end point indices of the onset method parameters on the event's times.
+        """
+        event_times = self.df_times.loc[index_event]
+        bg_start = event_times[self.BG_START_TIME_COLNAME]
+        bg_end = event_times[self.BG_END_TIME_COLNAME]
+        if pd.notna(bg_start) and pd.notna(bg_end):
+            return bg_start.to_pydatetime(), bg_end.to_pydatetime()
+        return (
+            times[self.parameters.onset_method_parameters["bg_start"]],
+            times[self.parameters.onset_method_parameters["bg_end"]],
+        )
+
+    def _bg_window_source(self, index_event) -> str:
+        return self._bg_sources.get(index_event, "default")
+
+    def set_bg_window(self, index_event, start, end) -> None:
+        """Sets the background window of the event, used instead of the input file or default one"""
+        start, end = pd.Timestamp(start), pd.Timestamp(end)
+        if start >= end:
+            raise ValueError(f"Background start ({start}) must be before its end ({end})")
+        self.df_times.loc[index_event, self.BG_START_TIME_COLNAME] = start
+        self.df_times.loc[index_event, self.BG_END_TIME_COLNAME] = end
+        self._bg_sources[index_event] = "set"
 
     def _iter_sensor_particles(self):
         """Yields (sensor, particle, particle_prefix) for the selected sensors and particles"""
@@ -143,7 +203,7 @@ class VDA:
                     df_protons, df_electrons, _ = self._epd_load(
                         sensor=sensor,
                         level="l2",
-                        startdate=row[self.BG_START_TIME_COLNAME],
+                        startdate=row[self.START_TIME_COLNAME],
                         enddate=row[self.END_TIME_COLNAME],
                         viewing=viewing,
                         path=self.DATA_PATH,
@@ -157,7 +217,7 @@ class VDA:
                             [c for c in df_particle.columns if c[0] == flux_cols_name]
                         ]
                         df_particle = df_particle[
-                            (df_particle.index >= row[self.BG_START_TIME_COLNAME])
+                            (df_particle.index >= row[self.START_TIME_COLNAME])
                             & (df_particle.index <= row[self.END_TIME_COLNAME])
                         ]
                         if self.parameters.resample_frequency:
@@ -377,6 +437,7 @@ class VDA:
         rows = []
         index = []
         for index_event, df_event in df.groupby(level=0):
+            bg_start, bg_end = self._bg_window(index_event, df_event.index.droplevel(0))
             for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
                 df_inner = df_event[sensor][particle][viewing][particle_prefix]
                 for column_name in df_inner.columns:
@@ -385,9 +446,8 @@ class VDA:
                     new_kwargs["particle"] = particle
                     new_kwargs["viewing"] = viewing
                     new_kwargs["channel"] = column_name
-                    if "bg_start" in kwargs and isinstance(kwargs["bg_start"], pd.Series):
-                        new_kwargs["bg_start"] = kwargs["bg_start"].loc[index_event].to_pydatetime()
-                        new_kwargs["bg_end"] = kwargs["bg_end"].loc[index_event].to_pydatetime()
+                    new_kwargs["bg_start"] = bg_start
+                    new_kwargs["bg_end"] = bg_end
                     try:
                         onset_time, bg_start, bg_stop, method_specific = self._onset_detection(
                             df_inner[column_name].droplevel(0, axis="index"),
@@ -505,7 +565,7 @@ class VDA:
             events = [events]
 
         for index_event in events:
-            time_start = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
+            time_start = self.df_times.loc[index_event][self.START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
             time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
             print(f"Event {index_event} ({time_start} to {time_end})")
             res = self.results.loc[index_event]
@@ -522,11 +582,11 @@ class VDA:
         for index_event in self.df_options.index.unique(level=0):
             vda_points = []
             # onset times are fitted in seconds from the event start
-            t0 = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].to_pydatetime()
+            t0 = self.df_times.loc[index_event][self.START_TIME_COLNAME].to_pydatetime()
             t_sun_to_observer = (
                 spice.get_body(
                     "Solar Orbiter",
-                    self.df_times.loc[index_event][self.BG_START_TIME_COLNAME],
+                    self.df_times.loc[index_event][self.START_TIME_COLNAME],
                     spice_frame="SOLO_HEEQ"
                 )
                 .distance
@@ -656,7 +716,7 @@ class VDA:
             plt.tight_layout()
             if savefig:
                 # date_str = self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')
-                time_start_str = self.df_times.loc[index_event][self.BG_START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
+                time_start_str = self.df_times.loc[index_event][self.START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
                 time_end_str = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
                 date_str = f"{time_start_str}_{time_end_str}"
                 particles_str = "_".join([f'{s}-{p}' for s, ps in self.parameters.sensors_particles.items() for p in ps])
@@ -685,12 +745,11 @@ class VDA:
             bot_lim, top_lim = ax.get_ylim()
             if bot_lim <= 0:
                 bot_lim = np.nanmin(temp_df.replace(0, np.nan).values)
-            bg_start = self.df_times.loc[event_no][self.BG_START_TIME_COLNAME] \
-                       if self.parameters.input_type == 1 \
-                       else self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_start"]]
-            bg_end = self.df_times.loc[event_no][self.BG_END_TIME_COLNAME] \
-                     if self.parameters.input_type == 1 \
-                     else self.df_grouped.loc[event_no].index[self.parameters.onset_method_parameters["bg_end"]]
+            bg_start, bg_end = self._bg_window(event_no, temp_df.index)
+            ax.set_title(
+                f"Event {event_no} | BG {bg_start:%Y-%m-%d %H:%M} to {bg_end:%Y-%m-%d %H:%M} "
+                f"({self._bg_window_source(event_no)})"
+            )
             plt.fill_betweenx([0, top_lim*10],
                               bg_start,
                               bg_end,

@@ -255,7 +255,7 @@ class VDA_nb_displayer:
             df_protons, df_electrons, energies = self.vda._epd_load(
                 sensor=sensor,
                 level="l2",
-                startdate=self.vda.df_times.iloc[0][self.vda.BG_START_TIME_COLNAME],
+                startdate=self.vda.df_times.iloc[0][self.vda.START_TIME_COLNAME],
                 enddate=self.vda.df_times.iloc[0][self.vda.END_TIME_COLNAME],
                 viewing="sun",
                 path=self.vda.DATA_PATH,
@@ -440,15 +440,6 @@ class VDA_nb_displayer:
             widget_params["disabled"] = False
             widget_params["style"] = self.WIDGETS_STYLE
             widget_params["layout"] = self.WIDGETS_LAYOUT
-            if parameter.startswith("bg_") and self.vda.parameters.input_type == 1:
-                if parameter == "bg_start":
-                    col = self.vda.BG_START_TIME_COLNAME
-                elif parameter == "bg_end":
-                    col = self.vda.BG_END_TIME_COLNAME
-                else:
-                    raise ValueError(f"Invalid bg parameter: {parameter}")
-                self.vda.parameters.onset_method_parameters[parameter] = self.vda.df_times[col]
-                continue
             if pinfo["type"] == int:
                 widget_type = widgets.IntSlider
                 widget_params["value"] = pinfo["default"]
