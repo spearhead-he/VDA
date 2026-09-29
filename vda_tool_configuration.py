@@ -10,6 +10,8 @@ class VDA_parameters:
         self.date_end: datetime = datetime(2021, 10, 28, 20, 0)
         self.bg_hours_prior: int = 2
         self.bg_hours_after: int = 5
+        # Default background window of the events without one in the events file, in minutes after the start time
+        self.bg_after_start: tuple = (0, 60)
         self.load_data: bool = False
         self.load_data_filepath: str = ""
         self.save_data: bool = False
@@ -117,20 +119,6 @@ class VDA_parameters:
                     "max": 5,
                     "default": 3,
                     "description": "Number of consecutive points that should cross the threshold:",
-                },
-                "bg_start": {
-                    "type": int,
-                    "min": 0,
-                    "max": 9999,
-                    "default": 0,
-                    "description": "Point index to start the background sampling:",
-                },
-                "bg_end": {
-                    "type": int,
-                    "min": 1,
-                    "max": 10000,
-                    "default": 12,
-                    "description": "Point index to end the background sampling:",
                 },
             }
         }

@@ -1,3 +1,4 @@
+import html
 import pandas as pd
 from IPython.display import display
 from ipywidgets import widgets
@@ -91,65 +92,78 @@ class VDA_nb_displayer:
         return w
 
     def display_date_range(self):
-        wgt_dt_start = widgets.widget_datetime.NaiveDatetimePicker(
-            value=self.vda.parameters.date_start,
-            description="Datetime range start:",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
+        """Displays the inputs of the data range, depending on the events file"""
+        filepath = self.vda.parameters.input_filepath
+        if not filepath:
+            wgt_dt_start = widgets.widget_datetime.NaiveDatetimePicker(
+                value=self.vda.parameters.date_start,
+                description="Datetime range start:",
+                disabled=False,
+                style=self.WIDGETS_STYLE,
+                layout=self.WIDGETS_LAYOUT,
+            )
+            wgt_dt_start.observe(
+                lambda traitlet: self._change_parameter("date_start", traitlet["new"]),
+                names="value",
+            )
+            wgt_dt_end = widgets.widget_datetime.NaiveDatetimePicker(
+                value=self.vda.parameters.date_end,
+                description="Datetime range end:",
+                disabled=False,
+                style=self.WIDGETS_STYLE,
+                layout=self.WIDGETS_LAYOUT,
+            )
+            wgt_dt_end.observe(
+                lambda traitlet: self._change_parameter("date_end", traitlet["new"]),
+                names="value",
+            )
+            return widgets.HBox([wgt_dt_start, wgt_dt_end])
+
+        try:
+            file_type = self.vda.times_file_type(filepath)
+        except (OSError, ValueError) as e:
+            return widgets.HTML(value=f"<pre>{html.escape(str(e))}</pre>")
+
+        if file_type == "reference times":
+            wgt_tw_prior = widgets.IntSlider(
+                value=self.vda.parameters.bg_hours_prior,
+                min=0,
+                max=12,
+                step=1,
+                description="Hours prior to the reference time:",
+                disabled=False,
+                style=self.WIDGETS_STYLE,
+                layout=self.WIDGETS_LAYOUT,
+            )
+            wgt_tw_prior.observe(
+                lambda traitlet: self._change_parameter(
+                    "bg_hours_prior", traitlet["new"]
+                ),
+                names="value",
+            )
+            wgt_tw_after = widgets.IntSlider(
+                value=self.vda.parameters.bg_hours_after,
+                min=0,
+                max=12,
+                step=1,
+                description="Hours after the reference time:",
+                disabled=False,
+                style=self.WIDGETS_STYLE,
+                layout=self.WIDGETS_LAYOUT,
+            )
+            wgt_tw_after.observe(
+                lambda traitlet: self._change_parameter(
+                    "bg_hours_after", traitlet["new"]
+                ),
+                names="value",
+            )
+            return widgets.VBox([wgt_tw_prior, wgt_tw_after])
+
+        df = self.vda._read_times_file(filepath)
+        with_bg = df[self.vda.BG_END_TIME_COLNAME].notna().sum()
+        return widgets.Label(
+            value=f"Datetime ranges from the events file: {len(df)} events, {with_bg} with a background window"
         )
-        wgt_dt_start.observe(
-            lambda traitlet: self._change_parameter("date_start", traitlet["new"]),
-            names="value",
-        )
-        wgt_dt_end = widgets.widget_datetime.NaiveDatetimePicker(
-            value=self.vda.parameters.date_end,
-            description="Datetime range end:",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        wgt_dt_end.observe(
-            lambda traitlet: self._change_parameter("date_end", traitlet["new"]),
-            names="value",
-        )
-        wgt_tw_prior = widgets.IntSlider(
-            value=self.vda.parameters.bg_hours_prior,
-            min=0,
-            max=12,
-            step=1,
-            description="Hours prior to the reference time (files with reference times):",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        wgt_tw_prior.observe(
-            lambda traitlet: self._change_parameter(
-                "bg_hours_prior", traitlet["new"]
-            ),
-            names="value",
-        )
-        wgt_tw_after = widgets.IntSlider(
-            value=self.vda.parameters.bg_hours_after,
-            min=0,
-            max=12,
-            step=1,
-            description="Hours after the reference time (files with reference times):",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        wgt_tw_after.observe(
-            lambda traitlet: self._change_parameter(
-                "bg_hours_after", traitlet["new"]
-            ),
-            names="value",
-        )
-        return widgets.VBox([
-            widgets.HBox([wgt_dt_start, wgt_dt_end]),
-            wgt_tw_prior,
-            wgt_tw_after,
-        ])
 
     def display_load_data_option(self):
         w = widgets.Checkbox(
@@ -441,6 +455,29 @@ class VDA_nb_displayer:
                 **wgt_info["widget_params"]
             )
         widgets.VBox(list(dict_wgt_onset_params.values()))
+
+    def display_bg_defaults(self):
+        try:
+            step = max(1, int(pd.Timedelta(self.vda.parameters.resample_frequency).total_seconds() // 60))
+        except ValueError:
+            step = 1
+        df_times = self.vda.df_times
+        longest_event = int((df_times[self.vda.END_TIME_COLNAME] - df_times[self.vda.START_TIME_COLNAME]).max().total_seconds() // 60)
+        w = widgets.IntRangeSlider(
+            value=self.vda.parameters.bg_after_start,
+            min=0,
+            max=max(longest_event, max(self.vda.parameters.bg_after_start)),
+            step=step,
+            description="Default background (minutes after the start time):",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        w.observe(
+            lambda traitlet: self.vda.set_default_bg_window(*traitlet["new"]),
+            names="value",
+        )
+        return w
 
     def display_onset_selection_selection(self):
         w = widgets.Dropdown(options=[("Use all", 0), ("Interactive", 1), ("Custom List", 2)], 

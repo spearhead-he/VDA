@@ -72,18 +72,27 @@ class VDA:
     def _epd_load(self, *args, **kwargs):
         return epd_load(*args, **kwargs)
 
+    def _check_times_file_columns(self, filepath: str, columns: pd.Index) -> None:
+        layouts = (self.REFERENCE_TIMES_FILE_LAYOUT,) + self.DATE_RANGE_FILE_LAYOUTS
+        if set(columns) not in [set(layout) for layout in layouts]:
+            accepted = "\n".join(f"    {self.EVENT_INDEX_NAME}, {', '.join(layout)}" for layout in layouts)
+            raise ValueError(
+                f"Unexpected columns in {filepath}: {', '.join(columns)}\n"
+                f"Accepted columns:\n{accepted}"
+            )
+
+    def times_file_type(self, filepath: str) -> str:
+        """Returns "reference times" or "datetime ranges", deduced from the columns of the events file"""
+        columns = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True, nrows=0).columns.str.strip()
+        self._check_times_file_columns(filepath, columns)
+        return "reference times" if self.REF_TIME_COLNAME in columns else "datetime ranges"
+
     def _read_times_file(self, filepath: str) -> pd.DataFrame:
         """Reads the events file. Its type (datetime ranges or reference times) is deduced from its columns"""
         df = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True)
         df.columns = df.columns.str.strip()
         df.index.name = self.EVENT_INDEX_NAME
-        layouts = (self.REFERENCE_TIMES_FILE_LAYOUT,) + self.DATE_RANGE_FILE_LAYOUTS
-        if set(df.columns) not in [set(layout) for layout in layouts]:
-            accepted = "\n".join(f"    {self.EVENT_INDEX_NAME}, {', '.join(layout)}" for layout in layouts)
-            raise ValueError(
-                f"Unexpected columns in {filepath}: {', '.join(df.columns)}\n"
-                f"Accepted columns:\n{accepted}"
-            )
+        self._check_times_file_columns(filepath, df.columns)
         df = df.apply(pd.to_datetime)
         if self.REF_TIME_COLNAME in df.columns:
             df[self.START_TIME_COLNAME] = df[self.REF_TIME_COLNAME] - timedelta(hours=self.parameters.bg_hours_prior)
@@ -103,7 +112,8 @@ class VDA:
 
         The events are read from parameters.input_filepath, or if it is empty, a single event
         from parameters.date_start to parameters.date_end is used.
-        Events without a background window (BG Start / BG End are NaT) use the default one.
+        Events without a background window in the events file get the default one
+        (parameters.bg_after_start minutes after the start time).
         """
         for name in self.REMOVED_INPUT_PARAMETERS:
             if hasattr(self.parameters, name):
@@ -138,31 +148,51 @@ class VDA:
 
         self._bg_sources = {
             index_event: "input file"
-            for index_event, row in self.df_times.iterrows()
             if pd.notna(row[self.BG_START_TIME_COLNAME]) and pd.notna(row[self.BG_END_TIME_COLNAME])
+            else "default"
+            for index_event, row in self.df_times.iterrows()
         }
+        self.set_default_bg_window(*self.parameters.bg_after_start)
 
         if self.parameters.view_dfs:
             return self.df_times
 
-    def _bg_window(self, index_event, times: pd.DatetimeIndex) -> tuple:
-        """Returns the (start, end) of the background window of the event.
-
-        The window in self.df_times (from the input file or set_bg_window) is used if present,
-        otherwise the bg_start / bg_end point indices of the onset method parameters on the event's times.
-        """
+    def _bg_window(self, index_event) -> tuple:
+        """Returns the (start, end) of the background window of the event"""
         event_times = self.df_times.loc[index_event]
-        bg_start = event_times[self.BG_START_TIME_COLNAME]
-        bg_end = event_times[self.BG_END_TIME_COLNAME]
-        if pd.notna(bg_start) and pd.notna(bg_end):
-            return bg_start.to_pydatetime(), bg_end.to_pydatetime()
         return (
-            times[self.parameters.onset_method_parameters["bg_start"]],
-            times[self.parameters.onset_method_parameters["bg_end"]],
+            event_times[self.BG_START_TIME_COLNAME].to_pydatetime(),
+            event_times[self.BG_END_TIME_COLNAME].to_pydatetime(),
         )
 
+    def set_default_bg_window(self, start_minutes: int, end_minutes: int) -> None:
+        """Sets the default background window, in minutes after the start time of the event.
+
+        It applies to the events without a background window from the events file or set_bg_window.
+        """
+        self.parameters.bg_after_start = (start_minutes, end_minutes)
+        for index_event, source in self._bg_sources.items():
+            if source != "default":
+                continue
+            start_time = self.df_times.loc[index_event, self.START_TIME_COLNAME]
+            self.df_times.loc[index_event, self.BG_START_TIME_COLNAME] = start_time + timedelta(minutes=min(start_minutes, end_minutes))
+            self.df_times.loc[index_event, self.BG_END_TIME_COLNAME] = start_time + timedelta(minutes=max(start_minutes, end_minutes))
+
+    def _check_bg_window(self, index_event, times: pd.DatetimeIndex) -> None:
+        """Prints a warning if the background window of the event is outside its data or has less than 3 points"""
+        bg_start, bg_end = self._bg_window(index_event)
+        event_times = self.df_times.loc[index_event]
+        if bg_start < event_times[self.START_TIME_COLNAME] or bg_end > event_times[self.END_TIME_COLNAME]:
+            print(
+                f"Warning: the background window of event {index_event} ({bg_start} to {bg_end}) is outside "
+                f"its data range ({event_times[self.START_TIME_COLNAME]} to {event_times[self.END_TIME_COLNAME]})"
+            )
+        n_points = ((times >= bg_start) & (times <= bg_end)).sum()
+        if n_points < 3:
+            print(f"Warning: the background window of event {index_event} has {n_points} data points")
+
     def _bg_window_source(self, index_event) -> str:
-        return self._bg_sources.get(index_event, "default")
+        return self._bg_sources[index_event]
 
     def set_bg_window(self, index_event, start, end) -> None:
         """Sets the background window of the event, used instead of the input file or default one"""
@@ -172,6 +202,18 @@ class VDA:
         self.df_times.loc[index_event, self.BG_START_TIME_COLNAME] = start
         self.df_times.loc[index_event, self.BG_END_TIME_COLNAME] = end
         self._bg_sources[index_event] = "set"
+
+    def save_times(self, filepath: str) -> None:
+        """Saves the data range and background window of each event.
+
+        The saved file can be used as parameters.input_filepath to reproduce the same windows.
+        """
+        self.df_times[[
+            self.START_TIME_COLNAME,
+            self.BG_START_TIME_COLNAME,
+            self.BG_END_TIME_COLNAME,
+            self.END_TIME_COLNAME,
+        ]].to_csv(filepath, date_format="%Y-%m-%d %H:%M:%S")
 
     def _iter_sensor_particles(self):
         """Yields (sensor, particle, particle_prefix) for the selected sensors and particles"""
@@ -436,7 +478,8 @@ class VDA:
         rows = []
         index = []
         for index_event, df_event in df.groupby(level=0):
-            bg_start, bg_end = self._bg_window(index_event, df_event.index.droplevel(0))
+            self._check_bg_window(index_event, df_event.index.droplevel(0))
+            bg_start, bg_end = self._bg_window(index_event)
             for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
                 df_inner = df_event[sensor][particle][viewing][particle_prefix]
                 for column_name in df_inner.columns:
@@ -473,6 +516,13 @@ class VDA:
         )
 
     def calculate_onsets(self):
+        for name in ("bg_start", "bg_end"):
+            if name in self.parameters.onset_method_parameters:
+                raise ValueError(
+                    f"The {name} onset method parameter was removed in v0.3.0. The default background window "
+                    f"is set with set_default_bg_window (minutes after the start time), "
+                    f"and the window of an event with set_bg_window."
+                )
         self.df_onsets = self._onset_detection_df(
             self.df_grouped,
             self.parameters.onset_method,
@@ -744,7 +794,8 @@ class VDA:
             bot_lim, top_lim = ax.get_ylim()
             if bot_lim <= 0:
                 bot_lim = np.nanmin(temp_df.replace(0, np.nan).values)
-            bg_start, bg_end = self._bg_window(event_no, temp_df.index)
+            self._check_bg_window(event_no, temp_df.index)
+            bg_start, bg_end = self._bg_window(event_no)
             ax.set_title(
                 f"Event {event_no} | BG {bg_start:%Y-%m-%d %H:%M} to {bg_end:%Y-%m-%d %H:%M} "
                 f"({self._bg_window_source(event_no)})"
