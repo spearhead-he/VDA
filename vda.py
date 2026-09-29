@@ -104,36 +104,44 @@ class VDA:
                 df[col] = pd.NaT
         return df
 
-    # Parameters replaced by input_filepath in v0.3.0
-    REMOVED_INPUT_PARAMETERS = ("input_type", "date_range_filepath", "reference_times_filepath")
+    # Parameters removed in v0.3.0 and what replaces them
+    REMOVED_INPUT_PARAMETERS = {
+        "input_type": "Set input_filepath to the events file (its type is deduced from its columns), or leave it empty to use date_ranges.",
+        "date_range_filepath": "Set input_filepath to the events file.",
+        "reference_times_filepath": "Set input_filepath to the events file.",
+        "date_start": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
+        "date_end": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
+    }
 
     def construct_times_df(self):
         """Creates self.df_times with the data range and background window of each event.
 
-        The events are read from parameters.input_filepath, or if it is empty, a single event
-        from parameters.date_start to parameters.date_end is used.
+        The events are read from parameters.input_filepath, or if it is empty, from parameters.date_ranges.
         Events without a background window in the events file get the default one
         (parameters.bg_after_start minutes after the start time).
         """
-        for name in self.REMOVED_INPUT_PARAMETERS:
+        for name, replacement in self.REMOVED_INPUT_PARAMETERS.items():
             if hasattr(self.parameters, name):
-                raise ValueError(
-                    f"The {name} parameter was removed in v0.3.0. Set input_filepath to the events file "
-                    f"(its type is deduced from its columns), or leave it empty for a single date range."
-                )
+                raise ValueError(f"The {name} parameter was removed in v0.3.0. {replacement}")
 
         if self.parameters.input_filepath:
             self.df_times = self._read_times_file(self.parameters.input_filepath)
         else:
+            date_ranges = self.parameters.date_ranges
+            if len(date_ranges) == 0:
+                raise ValueError("No events: set input_filepath or add a datetime range to date_ranges")
+            for index_event, (start, end) in enumerate(date_ranges, start=1):
+                if start is None or end is None or start >= end:
+                    raise ValueError(f"Event {index_event}: the datetime range start ({start}) must be before its end ({end})")
             self.df_times = pd.DataFrame(
                 {
-                    self.START_TIME_COLNAME: [self.parameters.date_start],
-                    self.BG_START_TIME_COLNAME: [pd.NaT],
-                    self.BG_END_TIME_COLNAME: [pd.NaT],
-                    self.END_TIME_COLNAME: [self.parameters.date_end],
-                    self.REF_TIME_COLNAME: [pd.NaT],
+                    self.START_TIME_COLNAME: [start for start, _ in date_ranges],
+                    self.BG_START_TIME_COLNAME: [pd.NaT] * len(date_ranges),
+                    self.BG_END_TIME_COLNAME: [pd.NaT] * len(date_ranges),
+                    self.END_TIME_COLNAME: [end for _, end in date_ranges],
+                    self.REF_TIME_COLNAME: [pd.NaT] * len(date_ranges),
                 },
-                index=pd.Index([1], name=self.EVENT_INDEX_NAME),
+                index=pd.Index(range(1, len(date_ranges) + 1), name=self.EVENT_INDEX_NAME),
             )
         self.df_times = self.df_times[[
             self.START_TIME_COLNAME,

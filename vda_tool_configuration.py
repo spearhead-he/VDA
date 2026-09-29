@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 class VDA_parameters:
 
     def __init__(self):
-        # File with the events (datetime ranges or reference times). If empty, date_start and date_end are used
+        # File with the events (datetime ranges or reference times). If empty, date_ranges are used
         self.input_filepath: str = ""
-        self.date_start: datetime = datetime(2021, 10, 28, 14, 0)
-        self.date_end: datetime = datetime(2021, 10, 28, 20, 0)
+        # (start, end) datetime range of each event, used when there is no events file
+        self.date_ranges: list = [(datetime(2021, 10, 28, 14, 0), datetime(2021, 10, 28, 20, 0))]
         self.bg_hours_prior: int = 2
         self.bg_hours_after: int = 5
         # Default background window of the events without one in the events file, in minutes after the start time

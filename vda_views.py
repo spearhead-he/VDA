@@ -95,29 +95,7 @@ class VDA_nb_displayer:
         """Displays the inputs of the data range, depending on the events file"""
         filepath = self.vda.parameters.input_filepath
         if not filepath:
-            wgt_dt_start = widgets.widget_datetime.NaiveDatetimePicker(
-                value=self.vda.parameters.date_start,
-                description="Datetime range start:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_dt_start.observe(
-                lambda traitlet: self._change_parameter("date_start", traitlet["new"]),
-                names="value",
-            )
-            wgt_dt_end = widgets.widget_datetime.NaiveDatetimePicker(
-                value=self.vda.parameters.date_end,
-                description="Datetime range end:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            wgt_dt_end.observe(
-                lambda traitlet: self._change_parameter("date_end", traitlet["new"]),
-                names="value",
-            )
-            return widgets.HBox([wgt_dt_start, wgt_dt_end])
+            return self._display_date_ranges()
 
         try:
             file_type = self.vda.times_file_type(filepath)
@@ -164,6 +142,57 @@ class VDA_nb_displayer:
         return widgets.Label(
             value=f"Datetime ranges from the events file: {len(df)} events, {with_bg} with a background window"
         )
+
+    def _display_date_ranges(self):
+        """One row with the datetime range of each event, and a button to add events"""
+        date_ranges = self.vda.parameters.date_ranges
+        wrapper_rows = widgets.VBox()
+
+        def set_range_value(i, j, value):
+            date_range = list(date_ranges[i])
+            date_range[j] = value
+            date_ranges[i] = tuple(date_range)
+
+        def remove_event(i):
+            del date_ranges[i]
+            show_rows()
+
+        def add_event(_):
+            date_ranges.append(date_ranges[-1])
+            show_rows()
+
+        def show_rows():
+            rows = []
+            for i, (start, end) in enumerate(date_ranges):
+                wgt_start = widgets.widget_datetime.NaiveDatetimePicker(
+                    value=start,
+                    description=f"Event {i + 1} start:",
+                    disabled=False,
+                    style=self.WIDGETS_STYLE,
+                    layout=self.WIDGETS_LAYOUT,
+                )
+                wgt_start.observe(lambda traitlet, i=i: set_range_value(i, 0, traitlet["new"]), names="value")
+                wgt_end = widgets.widget_datetime.NaiveDatetimePicker(
+                    value=end,
+                    description="end:",
+                    disabled=False,
+                    style=self.WIDGETS_STYLE,
+                    layout=self.WIDGETS_LAYOUT,
+                )
+                wgt_end.observe(lambda traitlet, i=i: set_range_value(i, 1, traitlet["new"]), names="value")
+                btn_remove = widgets.Button(
+                    description="Remove Event",
+                    tooltip=f"Remove event {i + 1}",
+                    disabled=len(date_ranges) == 1,
+                )
+                btn_remove.on_click(lambda _, i=i: remove_event(i))
+                rows.append(widgets.HBox([wgt_start, wgt_end, btn_remove]))
+            wrapper_rows.children = rows
+
+        btn_add = widgets.Button(description="Add Event")
+        btn_add.on_click(add_event)
+        show_rows()
+        return widgets.VBox([wrapper_rows, btn_add])
 
     def display_load_data_option(self):
         w = widgets.Checkbox(
