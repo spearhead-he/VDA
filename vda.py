@@ -180,24 +180,42 @@ class VDA:
         """
         self.parameters.bg_after_start = (start_minutes, end_minutes)
         for index_event, source in self._bg_sources.items():
-            if source != "default":
-                continue
-            start_time = self.df_times.loc[index_event, self.START_TIME_COLNAME]
-            self.df_times.loc[index_event, self.BG_START_TIME_COLNAME] = start_time + timedelta(minutes=min(start_minutes, end_minutes))
-            self.df_times.loc[index_event, self.BG_END_TIME_COLNAME] = start_time + timedelta(minutes=max(start_minutes, end_minutes))
+            if source == "default":
+                self._apply_default_bg_window(index_event)
 
-    def _check_bg_window(self, index_event, times: pd.DatetimeIndex) -> None:
-        """Prints a warning if the background window of the event is outside its data or has less than 3 points"""
+    def _apply_default_bg_window(self, index_event) -> None:
+        start_minutes, end_minutes = sorted(self.parameters.bg_after_start)
+        start_time = self.df_times.loc[index_event, self.START_TIME_COLNAME]
+        self.df_times.loc[index_event, self.BG_START_TIME_COLNAME] = start_time + timedelta(minutes=start_minutes)
+        self.df_times.loc[index_event, self.BG_END_TIME_COLNAME] = start_time + timedelta(minutes=end_minutes)
+
+    def reset_bg_window(self, index_event) -> None:
+        """Sets the background window of the event back to the default one"""
+        self._bg_sources[index_event] = "default"
+        self._apply_default_bg_window(index_event)
+
+    def _bg_window_points(self, index_event, times: pd.DatetimeIndex) -> int:
+        bg_start, bg_end = self._bg_window(index_event)
+        return int(((times >= bg_start) & (times <= bg_end)).sum())
+
+    def _bg_window_warnings(self, index_event, times: pd.DatetimeIndex) -> list:
+        """Warnings for a background window outside the data of the event or with less than 3 points"""
         bg_start, bg_end = self._bg_window(index_event)
         event_times = self.df_times.loc[index_event]
+        warnings = []
         if bg_start < event_times[self.START_TIME_COLNAME] or bg_end > event_times[self.END_TIME_COLNAME]:
-            print(
+            warnings.append(
                 f"Warning: the background window of event {index_event} ({bg_start} to {bg_end}) is outside "
                 f"its data range ({event_times[self.START_TIME_COLNAME]} to {event_times[self.END_TIME_COLNAME]})"
             )
-        n_points = ((times >= bg_start) & (times <= bg_end)).sum()
+        n_points = self._bg_window_points(index_event, times)
         if n_points < 3:
-            print(f"Warning: the background window of event {index_event} has {n_points} data points")
+            warnings.append(f"Warning: the background window of event {index_event} has {n_points} data points")
+        return warnings
+
+    def _check_bg_window(self, index_event, times: pd.DatetimeIndex) -> None:
+        for warning in self._bg_window_warnings(index_event, times):
+            print(warning)
 
     def _bg_window_source(self, index_event) -> str:
         return self._bg_sources[index_event]
@@ -561,6 +579,13 @@ class VDA:
         # if self.parameters.view_dfs:
         #     return self.df_options
 
+    def _channel_energy_range(self, sensor, particle, particle_prefix, channel) -> tuple:
+        """Returns the (low, high) energy of a grouped channel in MeV"""
+        channels = self.parameters.channel_groups[particle][channel]["channels"]
+        low_energy = self.df_energies.loc[(sensor, f"{particle_prefix}_{channels[0]}"), "Low Energy"]
+        high_energy = self.df_energies.loc[(sensor, f"{particle_prefix}_{channels[-1]}"), "High Energy"]
+        return low_energy, high_energy
+
     def construct_energy_channels_characteristics(self):
         rows = []
         index = []
@@ -570,11 +595,7 @@ class VDA:
                     particle_prefix
                 ].columns
             ):
-                low_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][0]}"
-                high_energy_key = f"{particle_prefix}_{self.parameters.channel_groups[particle][channel]['channels'][-1]}"
-                low_energy = self.df_energies.loc[sensor, low_energy_key]["Low Energy"]
-                high_energy = self.df_energies.loc[sensor, high_energy_key]["High Energy"]
-                    
+                low_energy, high_energy = self._channel_energy_range(sensor, particle, particle_prefix, channel)
                 geo_mean = sqrt(low_energy) * sqrt(high_energy)
                 inv_beta = 1 / sqrt(
                     1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
@@ -794,28 +815,53 @@ class VDA:
         self.compute_vda()
         return self.plot_vda(savefig, returnfig)
 
-    def plot_bg_selection(self):
-        for event_no, event in self.df_grouped.groupby(level=0):
-            _, ax = plt.subplots(figsize=(10, 8))
-            temp_df = event.droplevel(0)
-            plt.plot(temp_df)
-            bot_lim, top_lim = ax.get_ylim()
-            if bot_lim <= 0:
-                bot_lim = np.nanmin(temp_df.replace(0, np.nan).values)
-            self._check_bg_window(event_no, temp_df.index)
-            bg_start, bg_end = self._bg_window(event_no)
-            ax.set_title(
-                f"Event {event_no} | BG {bg_start:%Y-%m-%d %H:%M} to {bg_end:%Y-%m-%d %H:%M} "
-                f"({self._bg_window_source(event_no)})"
-            )
-            plt.fill_betweenx([0, top_lim*10],
-                              bg_start,
-                              bg_end,
-                              color="green",
-                              alpha=0.3)
+    def _plot_event_bg(self, ax, event_no) -> None:
+        """Plots the grouped channels of the event with its background window"""
+        # one colormap per sensor and particle, darker for the later channels of the group
+        colormaps = ["Blues", "Oranges", "Greens", "Purples", "Reds", "Greys"]
+        linestyles = ["-", "--", ":", "-."]
+        viewings = self.parameters.viewings
+        # zeros cannot be shown in log scale
+        temp_df = self.df_grouped.loc[event_no].replace(0, np.nan)
+        for i_group, (sensor, particle, particle_prefix) in enumerate(self._iter_sensor_particles()):
+            cmap = plt.get_cmap(colormaps[i_group % len(colormaps)])
+            for i_viewing, viewing in enumerate(viewings):
+                df_channels = temp_df[sensor][particle][viewing][particle_prefix]
+                n_channels = len(df_channels.columns)
+                for i_channel, channel in enumerate(df_channels.columns):
+                    low_energy, high_energy = self._channel_energy_range(sensor, particle, particle_prefix, channel)
+                    label = f"{sensor.upper()} {particle} {low_energy:.2f}-{high_energy:.2f} MeV"
+                    if len(viewings) > 1:
+                        label += f" ({viewing})"
+                    ax.plot(
+                        df_channels[channel],
+                        color=cmap(0.4 + 0.6 * i_channel / max(n_channels - 1, 1)),
+                        linestyle=linestyles[i_viewing % len(linestyles)],
+                        label=label,
+                    )
 
-            ax.set_ylabel("Flux")
-            ax.set_yscale("log")
-            ax.set_ylim(bot_lim/10, top_lim*10)
-            ax.set_xlabel("Time")
+        bg_start, bg_end = self._bg_window(event_no)
+        ax.axvspan(bg_start, bg_end, color="green", alpha=0.2, label="Background")
+        bg_end_format = "%H:%M" if bg_start.date() == bg_end.date() else "%Y-%m-%d %H:%M"
+        ax.set_title(
+            f"Event {event_no}\n"
+            f"Background: {bg_start:%Y-%m-%d %H:%M} to {bg_end:{bg_end_format}} ({self._bg_window_source(event_no)})"
+        )
+
+        ax.set_yscale("log")
+        ax.set_ylabel(r"Intensity (cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
+        ax.set_xlim(temp_df.index[0], temp_df.index[-1])
+        locator = mdates.AutoDateLocator()
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+        ax.set_xlabel("Time (UTC)")
+        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize="small")
+
+    def plot_bg_selection(self):
+        """Plots the grouped channels of each event with its background window"""
+        for event_no in self.df_grouped.index.unique(level=0):
+            self._check_bg_window(event_no, self.df_grouped.loc[event_no].index)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            self._plot_event_bg(ax, event_no)
+            fig.tight_layout()
             plt.show()

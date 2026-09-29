@@ -1,6 +1,6 @@
 import html
 import pandas as pd
-from IPython.display import display
+from IPython.display import clear_output, display
 from ipywidgets import widgets
 from math import ceil
 from matplotlib import pyplot as plt
@@ -508,6 +508,81 @@ class VDA_nb_displayer:
         )
         return w
 
+    def display_bg_selection(self):
+        """Plot of the selected event with a slider to choose its background window"""
+        vda = self.vda
+        out_plot = widgets.Output()
+        wgt_status = widgets.HTML()
+        wgt_event = widgets.Dropdown(
+            options=[
+                (f"Event {event_no} ({vda.df_times.loc[event_no, vda.START_TIME_COLNAME]:%Y-%m-%d %H:%M})", event_no)
+                for event_no in vda.df_grouped.index.unique(level=0)
+            ],
+            description="Event:",
+            style=self.WIDGETS_STYLE,
+        )
+        wgt_bg = widgets.SelectionRangeSlider(
+            options=[("", None)],
+            description="Background:",
+            continuous_update=False,
+            style=self.WIDGETS_STYLE,
+            layout=widgets.Layout(width="95%"),
+        )
+        btn_reset = widgets.Button(description="Reset to default", tooltip="Use the default background window for this event")
+        # the slider is not applied to the event while it is set to the event's window
+        updating = {"slider": False}
+
+        def redraw():
+            event_no = wgt_event.value
+            times = vda.df_grouped.loc[event_no].index
+            bg_start, bg_end = vda._bg_window(event_no)
+            status = (
+                f"Background {bg_start:%Y-%m-%d %H:%M} to {bg_end:%Y-%m-%d %H:%M} "
+                f"({vda._bg_window_source(event_no)}), {vda._bg_window_points(event_no, times)} points"
+            )
+            warnings = vda._bg_window_warnings(event_no, times)
+            wgt_status.value = "<br>".join([html.escape(status)] + [f"<b>{html.escape(w)}</b>" for w in warnings])
+            with out_plot:
+                clear_output(wait=True)
+                fig, ax = plt.subplots(figsize=(12, 6))
+                vda._plot_event_bg(ax, event_no)
+                fig.tight_layout()
+                plt.show()
+                plt.close(fig)
+
+        def show_event(_=None):
+            event_no = wgt_event.value
+            times = vda.df_grouped.loc[event_no].index
+            bg_start, bg_end = vda._bg_window(event_no)
+            # the data points closest to the event's window, inside it
+            i_start = min(int(times.searchsorted(bg_start)), len(times) - 1)
+            i_end = max(int(times.searchsorted(bg_end, side="right")) - 1, i_start)
+            updating["slider"] = True
+            wgt_bg.options = [(f"{t:%Y-%m-%d %H:%M}", t) for t in times]
+            wgt_bg.index = (i_start, i_end)
+            updating["slider"] = False
+            redraw()
+
+        def set_bg(traitlet):
+            if updating["slider"]:
+                return
+            bg_start, bg_end = traitlet["new"]
+            if bg_start >= bg_end:
+                wgt_status.value = "<b>The background start must be before its end</b>"
+                return
+            vda.set_bg_window(wgt_event.value, bg_start, bg_end)
+            redraw()
+
+        def reset_bg(_):
+            vda.reset_bg_window(wgt_event.value)
+            show_event()
+
+        wgt_event.observe(show_event, names="value")
+        wgt_bg.observe(set_bg, names="value")
+        btn_reset.on_click(reset_bg)
+        show_event()
+        return widgets.VBox([widgets.HBox([wgt_event, btn_reset]), wgt_bg, wgt_status, out_plot])
+
     def display_onset_selection_selection(self):
         w = widgets.Dropdown(options=[("Use all", 0), ("Interactive", 1), ("Custom List", 2)], 
                              value=self.vda.parameters.onset_selection, 
@@ -621,11 +696,7 @@ class VDA_nb_displayer:
                             plt.close()
                             continue
 
-                        used_i = self.vda.parameters.channel_groups[particle][column]["channels"]
-                        low_i = used_i[0]
-                        high_i = used_i[-1]
-                        low_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{low_i}"), "Low Energy"]
-                        high_energy = self.vda.df_energies.loc[(sensor, f"{particle_prefix}_{high_i}"), "High Energy"]
+                        low_energy, high_energy = self.vda._channel_energy_range(sensor, particle, particle_prefix, column)
                         energy_range_str = f"{low_energy:.2f}-{high_energy:.2f}"
                             
                         twgt = widgets.Label(
