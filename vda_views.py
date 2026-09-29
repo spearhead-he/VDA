@@ -608,7 +608,7 @@ class VDA_nb_displayer:
         df_index = temp_df.index[~temp_df.index.duplicated(keep="first")]
         self.vda.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
         if self.vda.parameters.onset_selection == 0:
-            # Use all (priority by default viewings)
+            # Use all (the first viewing with an onset, in the order of the viewings)
             for i, _ in self.vda.parameters.selected_onsets.iterrows():
                 for v in self.vda.parameters.viewings:
                     try:
@@ -616,6 +616,7 @@ class VDA_nb_displayer:
                     except KeyError:
                         continue
                     self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
+                    break
         elif self.vda.parameters.onset_selection == 1:
             time_formatter = mdates.DateFormatter("%H:%M")
             for event_no, event in self.vda.df_grouped.groupby(level=0):
