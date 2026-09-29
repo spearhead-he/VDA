@@ -748,7 +748,7 @@ class VDA:
             res = self.results.loc[index_event]
             self.print_results(index_event)
 
-            fig, ax = plt.subplots(figsize=(10, 8))
+            fig, ax = plt.subplots(figsize=(12, 8), layout="constrained")
             ax.scatter(
                 inv_betas,
                 [to_time(t) for t in fit["onset_seconds"]],
@@ -767,31 +767,31 @@ class VDA:
                 color="blue",
                 alpha=0.1,
             )
-            plt.title(f"Event {index_event} ({self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
-            plt.xlabel("Inverse Beta")
-            plt.ylabel("Time")
+            fig.suptitle(f"Event {index_event} ({self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
+            ax.set_xlabel("Inverse Beta")
+            ax.set_ylabel("Time")
             time_formatter = mdates.DateFormatter("%H:%M")
             ax.yaxis.set_major_formatter(time_formatter)
-            plt.plot(
+            ax.plot(
                 [],
                 [],
                 alpha=0,
                 label=f"Extra Time = {self._format_timedelta(res['Extra Time'])}",
             )
-            plt.plot(
+            ax.plot(
                 [],
                 [],
                 alpha=0,
                 label=f"Release Time = {res['Release Time']} +/- {self._format_timedelta(res['Release Time Error'])}",
             )
-            plt.plot(
+            ax.plot(
                 [],
                 [],
                 alpha=0,
                 label=f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
             )
-            plt.legend(bbox_to_anchor=(1, 0.6), loc="upper left")
-            plt.tight_layout()
+            # legend between the title and the plot
+            ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=2, frameon=False)
             if savefig:
                 # date_str = self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')
                 time_start_str = self.df_times.loc[index_event][self.START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
