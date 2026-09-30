@@ -4,7 +4,7 @@ from IPython.display import clear_output, display
 from ipywidgets import widgets
 from matplotlib import pyplot as plt
 
-from vda_tool_configuration import *
+from vda_tool_configuration import OnsetSelection
 
 
 class VDA_nb_displayer:
@@ -385,14 +385,12 @@ class VDA_nb_displayer:
         wrapper_btns = widgets.HBox([btn_choose, out_options])
         
         list_wgt_chk_viewings = []
-        for i, viewing in enumerate(self.vda.parameters.AVAILABLE_VIEWINGS):
-            w = widgets.Checkbox(value=self.vda.parameters.viewings_tt[i], 
+        for viewing in self.vda.parameters.AVAILABLE_VIEWINGS:
+            w = widgets.Checkbox(value=viewing in self.vda.parameters.viewings, 
                                  description=viewing, 
                                  disabled=False, 
                                  indent=True)
-            w.observe(lambda traitlet: self._change_parameter_index("viewings_tt", 
-                                                                    self.vda.parameters.AVAILABLE_VIEWINGS.index(traitlet["owner"].description), 
-                                                                    traitlet["new"]),
+            w.observe(lambda traitlet, viewing=viewing: self._select_viewing(viewing, traitlet["new"]),
                       names="value")
             list_wgt_chk_viewings.append(w)
         grp_viewings = widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})] + list_wgt_chk_viewings)
@@ -409,6 +407,13 @@ class VDA_nb_displayer:
                                   names="value")
         
         display(widgets.VBox([wrapper_btns, grp_viewings, wgt_resample_freq, wrapper_channels]))
+
+    def _select_viewing(self, viewing, selected):
+        """Adds or removes a viewing. The checkboxes keep the order of AVAILABLE_VIEWINGS"""
+        self.vda.parameters.viewings = [
+            v for v in self.vda.parameters.AVAILABLE_VIEWINGS
+            if (v == viewing and selected) or (v != viewing and v in self.vda.parameters.viewings)
+        ]
 
     def display_onset_method_selection(self):
         w = widgets.Dropdown(options=list(self.vda.parameters.AVAILABLE_ONSET_METHODS.keys()), 
@@ -457,15 +462,6 @@ class VDA_nb_displayer:
             list_param_widgets.append(w)
 
         return widgets.VBox(list_param_widgets)
-
-        dict_wgt_onset_params = {}
-        for parameter, wgt_info in AVAILABLE_ONSET_METHODS[
-            wgt_onset_method.value
-        ].items():
-            dict_wgt_onset_params[parameter] = wgt_info["widget"](
-                **wgt_info["widget_params"]
-            )
-        widgets.VBox(list(dict_wgt_onset_params.values()))
 
     def display_bg_defaults(self):
         try:
@@ -566,7 +562,9 @@ class VDA_nb_displayer:
         return widgets.VBox([widgets.HBox([wgt_event, btn_reset]), wgt_bg, wgt_status, out_plot])
 
     def display_onset_selection_selection(self):
-        w = widgets.Dropdown(options=[("Use all", 0), ("Interactive", 1), ("Custom List", 2)], 
+        w = widgets.Dropdown(options=[("Use all", OnsetSelection.USE_ALL),
+                                      ("Interactive", OnsetSelection.INTERACTIVE),
+                                      ("Custom List", OnsetSelection.CUSTOM_LIST)], 
                              value=self.vda.parameters.onset_selection, 
                              description="Onset selection method:", 
                              disabled=False, 
@@ -685,7 +683,7 @@ class VDA_nb_displayer:
         temp_df = self.vda.df_options.droplevel(level=5)
         df_index = temp_df.index[~temp_df.index.duplicated(keep="first")]
         self.vda.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
-        if self.vda.parameters.onset_selection in (0, 1):
+        if self.vda.parameters.onset_selection in (OnsetSelection.USE_ALL, OnsetSelection.INTERACTIVE):
             # Use all (the first viewing with an onset, in the order of the viewings).
             # Interactive selection starts from the same viewings
             for i, _ in self.vda.parameters.selected_onsets.iterrows():
@@ -696,9 +694,9 @@ class VDA_nb_displayer:
                         continue
                     self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
                     break
-        if self.vda.parameters.onset_selection == 1:
+        if self.vda.parameters.onset_selection == OnsetSelection.INTERACTIVE:
             return self._display_onset_selection()
-        elif self.vda.parameters.onset_selection == 2:
+        elif self.vda.parameters.onset_selection == OnsetSelection.CUSTOM_LIST:
             # # Custom list
             # df_selections = pd.DataFrame({})
             # for index_event, df_event in self.df_options.groupby(level=0):

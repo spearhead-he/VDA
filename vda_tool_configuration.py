@@ -1,60 +1,129 @@
-from datetime import datetime, timezone
+from dataclasses import dataclass, field, fields
+from datetime import datetime
+from enum import IntEnum
+from typing import ClassVar
+
+import pandas as pd
 
 
+class OnsetSelection(IntEnum):
+    USE_ALL = 0
+    INTERACTIVE = 1
+    CUSTOM_LIST = 2
+
+
+AVAILABLE_SENSORS_PARTICLES = {
+    "het": ("protons", "electrons"),
+    "ept": ("protons", "electrons"),
+}
+
+AVAILABLE_CHANNELS = {
+    "het": {
+        "protons": tuple(range(36)),
+        "electrons": tuple(range(4)),
+    },
+    "ept": {
+        "protons": tuple(range(64)),
+        "electrons": tuple(range(34)),
+    },
+}
+
+AVAILABLE_VIEWINGS = ("sun", "asun", "north", "south", "omni")
+
+AVAILABLE_ONSET_METHODS = {
+    "sigma": {
+        "s": {
+            "type": int,
+            "min": 1,
+            "max": 5,
+            "default": 3,
+            "description": "Threshold (<this parameter>*<standard deviation>):",
+        },
+        "n": {
+            "type": int,
+            "min": 1,
+            "max": 5,
+            "default": 3,
+            "description": "Number of consecutive points that should cross the threshold:",
+        },
+    }
+}
+
+# Parameters removed in v0.3.0 and what replaces them
+REMOVED_PARAMETERS = {
+    "input_type": "Set input_filepath to the events file (its type is deduced from its columns), or leave it empty to use date_ranges.",
+    "date_range_filepath": "Set input_filepath to the events file.",
+    "reference_times_filepath": "Set input_filepath to the events file.",
+    "date_start": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
+    "date_end": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
+    "viewings_tt": 'Set viewings to a list of viewing names, e.g. ["sun", "north"].',
+}
+
+
+def _default_onset_method_parameters(method: str) -> dict:
+    return {k: v["default"] for k, v in AVAILABLE_ONSET_METHODS[method].items()}
+
+
+@dataclass
 class VDA_parameters:
-
-    def __init__(self):
-        # File with the events (datetime ranges or reference times). If empty, date_ranges are used
-        self.input_filepath: str = ""
-        # (start, end) datetime range of each event, used when there is no events file
-        self.date_ranges: list = [(datetime(2021, 10, 28, 14, 0), datetime(2021, 10, 28, 20, 0))]
-        self.bg_hours_prior: int = 2
-        self.bg_hours_after: int = 5
-        # Default background window of the events without one in the events file, in minutes after the start time
-        self.bg_after_start: tuple = (0, 60)
-        self.load_data: bool = False
-        self.load_data_filepath: str = ""
-        self.save_data: bool = False
-        self.save_data_filepath: str = ""
-        self.viewings_tt: list = [True if v == "sun" else False for v in self.AVAILABLE_VIEWINGS]
-        self.resample_frequency: str = "5min"
-        self.default_channel_groups: dict = {
-            "protons": {
-                "HET": [
-                    [1, 2, 3],
-                    [10, 11, 12],
-                    [13, 14, 15],
-                    [16, 17, 18],
-                    [19, 20, 21],
-                    [22, 23, 24],
-                    [25, 26, 27],
-                    [28, 29, 30, 31]
-                ]
-            },
-            "electrons": {
-                "HET": [
-                    [0, 1],
-                    [2, 3]
-                ]
-            }
+    # File with the events (datetime ranges or reference times). If empty, date_ranges are used
+    input_filepath: str = ""
+    # (start, end) datetime range of each event, used when there is no events file
+    date_ranges: list = field(default_factory=lambda: [(datetime(2021, 10, 28, 14, 0), datetime(2021, 10, 28, 20, 0))])
+    # Data range of the files with reference times, in hours before and after the reference time
+    bg_hours_prior: int = 2
+    bg_hours_after: int = 5
+    # Default background window of the events without one in the events file, in minutes after the start time
+    bg_after_start: tuple = (0, 60)
+    load_data: bool = False
+    load_data_filepath: str = ""
+    save_data: bool = False
+    save_data_filepath: str = ""
+    # Selected viewings. Their order is the priority of the "Use all" onset selection
+    viewings: list = field(default_factory=lambda: ["sun"])
+    resample_frequency: str = "5min"
+    default_channel_groups: dict = field(default_factory=lambda: {
+        "protons": {
+            "HET": [
+                [1, 2, 3],
+                [10, 11, 12],
+                [13, 14, 15],
+                [16, 17, 18],
+                [19, 20, 21],
+                [22, 23, 24],
+                [25, 26, 27],
+                [28, 29, 30, 31]
+            ]
+        },
+        "electrons": {
+            "HET": [
+                [0, 1],
+                [2, 3]
+            ]
         }
-        self.channel_groups: dict = {}
-        self.onset_method: str = list(self.AVAILABLE_ONSET_METHODS.keys())[0]
-        self.onset_method_parameters: dict = {
-            k: v["default"]
-            for k, v in self.AVAILABLE_ONSET_METHODS[self.onset_method].items()
-        }
-        self.onset_selection: int = 0
-        self.selected_onsets: dict | None = None
-        self.view_dfs: bool = True
+    })
+    channel_groups: dict = field(default_factory=dict)
+    onset_method: str = next(iter(AVAILABLE_ONSET_METHODS))
+    onset_method_parameters: dict = field(
+        default_factory=lambda: _default_onset_method_parameters(next(iter(AVAILABLE_ONSET_METHODS)))
+    )
+    onset_selection: OnsetSelection = OnsetSelection.USE_ALL
+    # Selected viewing of each grouped channel, set by the onset selection
+    selected_onsets: pd.DataFrame | None = field(default=None, repr=False, compare=False)
+    view_dfs: bool = True
 
-    @property
-    def sensors(self):
-        return set([spec["sensor"] for g in self.channel_groups.values() for spec in g.values()])
+    AVAILABLE_SENSORS_PARTICLES: ClassVar[dict] = AVAILABLE_SENSORS_PARTICLES
+    AVAILABLE_CHANNELS: ClassVar[dict] = AVAILABLE_CHANNELS
+    AVAILABLE_VIEWINGS: ClassVar[tuple] = AVAILABLE_VIEWINGS
+    AVAILABLE_ONSET_METHODS: ClassVar[dict] = AVAILABLE_ONSET_METHODS
 
-    @property
-    def particles(self):
-        return list(self.channel_groups.keys())
+    def __setattr__(self, name, value):
+        # catches removed parameters and typos, which would otherwise be silently ignored
+        if name in REMOVED_PARAMETERS:
+            raise AttributeError(f"The {name} parameter was removed in v0.3.0. {REMOVED_PARAMETERS[name]}")
+        if name not in {f.name for f in fields(self)}:
+            raise AttributeError(f"VDA_parameters has no parameter '{name}'")
+        super().__setattr__(name, value)
 
     @property
     def sensors_particles(self):
@@ -65,72 +134,3 @@ class VDA_parameters:
                 if p not in particles:
                     particles.append(p)
         return sp
-
-    @property
-    def viewings(self):
-        return [v for i, v in enumerate(self.AVAILABLE_VIEWINGS) if self.viewings_tt[i]]
-
-    @property
-    def AVAILABLE_SENSORS(self):
-        return ["het", "ept"]
-
-    @property
-    def AVAILABLE_PARTICLES(self):
-        return ["protons", "electrons"]
-
-    @property
-    def AVAILABLE_SENSORS_PARTICLES(self):
-        return {
-            "het": ["protons", "electrons"],
-            "ept": ["protons", "electrons"]
-        }
-
-    @property
-    def AVAILABLE_CHANNELS(self):
-        return {
-            "het": {
-                "protons": list(range(36)),
-                "electrons": list(range(4))
-            },
-            "ept": {
-                "protons": list(range(64)),
-                "electrons": list(range(34))
-            }
-        }
-
-    @property
-    def AVAILABLE_VIEWINGS(self):
-        return ["sun", "asun", "north", "south", "omni"]
-
-    @property
-    def AVAILABLE_ONSET_METHODS(self):
-        return {
-            "sigma": {
-                "s": {
-                    "type": int,
-                    "min": 1,
-                    "max": 5,
-                    "default": 3,
-                    "description": "Threshold (<this parameter>*<standard deviation>):",
-                },
-                "n": {
-                    "type": int,
-                    "min": 1,
-                    "max": 5,
-                    "default": 3,
-                    "description": "Number of consecutive points that should cross the threshold:",
-                },
-            }
-        }
-
-# ############### Particle Data ###############
-
-# # onset_method = "poisson_cusum_bootstrap"
-# # onset_method_params = {
-# #     "bg_start": 0,
-# #     "bg_end": 12,
-# #     "bootstraps": 1000,
-# #     "cusum_minutes": 60,
-# #     "sample_size": 0.75,
-# #     "limit_averaging": "4 min"
-# # }

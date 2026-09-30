@@ -77,7 +77,7 @@ The background window of each event can be checked and changed in the Notebook w
 
 ### Onset selection
 
-- Use all: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used.
+- Use all: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used. With the Notebook checkboxes the order is sun, asun, north, south, omni; a different priority can be set with `vda.parameters.viewings`, e.g. `["north", "sun"]`.
 - Interactive: the determined onsets are shown one channel at a time, chosen with the event and channel dropdowns or the "Previous" / "Next" buttons, and the viewing whose onset is used is selected per channel (or none, to leave the channel out). The selection starts from the viewings of "Use all".
 
 ### Results
