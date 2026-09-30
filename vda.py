@@ -104,15 +104,6 @@ class VDA:
                 df[col] = pd.NaT
         return df
 
-    # Parameters removed in v0.3.0 and what replaces them
-    REMOVED_INPUT_PARAMETERS = {
-        "input_type": "Set input_filepath to the events file (its type is deduced from its columns), or leave it empty to use date_ranges.",
-        "date_range_filepath": "Set input_filepath to the events file.",
-        "reference_times_filepath": "Set input_filepath to the events file.",
-        "date_start": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
-        "date_end": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
-    }
-
     def construct_times_df(self):
         """Creates self.df_times with the data range and background window of each event.
 
@@ -120,10 +111,6 @@ class VDA:
         Events without a background window in the events file get the default one
         (parameters.bg_after_start minutes after the start time).
         """
-        for name, replacement in self.REMOVED_INPUT_PARAMETERS.items():
-            if hasattr(self.parameters, name):
-                raise ValueError(f"The {name} parameter was removed in v0.3.0. {replacement}")
-
         if self.parameters.input_filepath:
             self.df_times = self._read_times_file(self.parameters.input_filepath)
         else:
