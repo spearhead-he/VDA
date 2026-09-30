@@ -16,47 +16,9 @@ class VDA_nb_displayer:
 
         self.vda = vda_obj
 
-    def _change_parameter(self, parameter, new_value):
-        self.vda.parameters.__setattr__(parameter, new_value)
-
-    def _change_parameter_index(self, parameter, index, new_value, index_sep=None):
-        if index_sep is None:
-            index = [index]
-        else:
-            index = index.split(index_sep)
-        par = self.vda.parameters.__getattribute__(parameter)
-        for i in index[:-1]:
-            try:
-                par = par[str(i)]
-            except TypeError:
-                par = par[int(i)]
-        try:
-            par[str(index[-1])] = new_value
-        except TypeError:
-            par[int(index[-1])] = new_value
-
-    def _delete_parameter_index(self, parameter, index, cascade=False, index_sep=None):
-        if index_sep is None:
-            index = [index]
-        else:
-            index = index.split(index_sep)
-        
-        while True:
-            par = par = self.vda.parameters.__getattribute__(parameter)
-            for i in index[:-1]:
-                try:
-                    par = par[str(i)]
-                except TypeError:
-                    par = par[int(i)]
-            try:
-                del par[str(index[-1])]
-            except TypeError:
-                del par[int(index[-1])]
-            
-            if cascade and len(index) > 1 and len(par) == 0:
-                index = index[:-1]
-            else:
-                break
+    def _bind(self, widget, parameter):
+        """Sets the parameter to the value of the widget when it changes"""
+        widget.observe(lambda traitlet: setattr(self.vda.parameters, parameter, traitlet["new"]), names="value")
 
     def display_input_file(self):
         w = widgets.Text(
@@ -67,10 +29,7 @@ class VDA_nb_displayer:
             style=self.WIDGETS_STYLE,
             layout=self.WIDGETS_LAYOUT,
         )
-        w.observe(
-            lambda traitlet: self._change_parameter("input_filepath", traitlet["new"]),
-            names="value",
-        )
+        self._bind(w, "input_filepath")
         return w
 
     def display_date_range(self):
@@ -95,12 +54,7 @@ class VDA_nb_displayer:
                 style=self.WIDGETS_STYLE,
                 layout=self.WIDGETS_LAYOUT,
             )
-            wgt_tw_prior.observe(
-                lambda traitlet: self._change_parameter(
-                    "bg_hours_prior", traitlet["new"]
-                ),
-                names="value",
-            )
+            self._bind(wgt_tw_prior, "bg_hours_prior")
             wgt_tw_after = widgets.IntSlider(
                 value=self.vda.parameters.bg_hours_after,
                 min=0,
@@ -111,12 +65,7 @@ class VDA_nb_displayer:
                 style=self.WIDGETS_STYLE,
                 layout=self.WIDGETS_LAYOUT,
             )
-            wgt_tw_after.observe(
-                lambda traitlet: self._change_parameter(
-                    "bg_hours_after", traitlet["new"]
-                ),
-                names="value",
-            )
+            self._bind(wgt_tw_after, "bg_hours_after")
             return widgets.VBox([wgt_tw_prior, wgt_tw_after])
 
         df = self.vda._read_times_file(filepath)
@@ -183,10 +132,7 @@ class VDA_nb_displayer:
             disabled=False,
             indent=True,
         )
-        w.observe(
-            lambda traitlet: self._change_parameter("load_data", traitlet["new"]),
-            names="value",
-        )
+        self._bind(w, "load_data")
         return w
 
     def display_save_data_option(self):
@@ -199,12 +145,7 @@ class VDA_nb_displayer:
                 style=self.WIDGETS_STYLE,
                 layout=self.WIDGETS_LAYOUT,
             )
-            wgt_load_data_filepath.observe(
-                lambda traitlet: self._change_parameter(
-                    "load_data_filepath", traitlet["new"]
-                ),
-                names="value",
-            )
+            self._bind(wgt_load_data_filepath, "load_data_filepath")
             vbox = widgets.VBox([wgt_load_data_filepath])
         else:
             wgt_save_data = widgets.Checkbox(
@@ -213,10 +154,7 @@ class VDA_nb_displayer:
                 disabled=False,
                 indent=True,
             )
-            wgt_save_data.observe(
-                lambda traitlet: self._change_parameter("save_data", traitlet["new"]),
-                names="value",
-            )
+            self._bind(wgt_save_data, "save_data")
             wgt_save_data_filepath = widgets.Text(
                 value=self.vda.parameters.save_data_filepath,
                 placeholder="Path with .pkl extension",
@@ -225,79 +163,13 @@ class VDA_nb_displayer:
                 style=self.WIDGETS_STYLE,
                 layout=self.WIDGETS_LAYOUT,
             )
-            wgt_save_data_filepath.observe(
-                lambda traitlet: self._change_parameter(
-                    "save_data_filepath", traitlet["new"]
-                ),
-                names="value",
-            )
+            self._bind(wgt_save_data_filepath, "save_data_filepath")
             vbox = widgets.VBox([wgt_save_data, wgt_save_data_filepath])
 
         return vbox
 
     def construct_energies_df(self):
-        self.vda.df_energies = pd.DataFrame({})
-        df_sensors = []
-        for sensor, particles in self.vda.parameters.AVAILABLE_SENSORS_PARTICLES.items():
-            
-            if len(particles) == 0:
-                continue
-
-            df_protons, df_electrons, energies = self.vda._epd_load(
-                sensor=sensor,
-                level="l2",
-                startdate=self.vda.df_times.iloc[0][self.vda.START_TIME_COLNAME],
-                enddate=self.vda.df_times.iloc[0][self.vda.END_TIME_COLNAME],
-                viewing="sun",
-                path=self.vda.DATA_PATH,
-                autodownload=True,
-            )
-            flux_cols_name = self.vda.RAW_FLUX_COLUMN[sensor]
-            energy_bins_cols_name = self.vda.RAW_ENERGY_BINS_COLUMN[sensor]
-            df_protons = df_protons.rename(
-                lambda x: x.replace(flux_cols_name["protons"], self.vda.PROTON_COLUMN_PREFIX),
-                axis="columns",
-            )
-            df_electrons = df_electrons.rename(
-                lambda x: x.replace(flux_cols_name["electrons"], self.vda.ELECTRON_COLUMN_PREFIX),
-                axis="columns",
-            )
-
-            df_energies_protons = pd.DataFrame(
-                {
-                    "Low Energy": energies[f"{energy_bins_cols_name['protons']}_Low_Energy"],
-                    "Bin Width": energies[f"{energy_bins_cols_name['protons']}_Width"],
-                },
-                index=df_protons[self.vda.PROTON_COLUMN_PREFIX].columns,
-            )
-            df_energies_protons["High Energy"] = (
-                df_energies_protons["Low Energy"] + df_energies_protons["Bin Width"]
-            )
-
-            df_energies_electrons = pd.DataFrame(
-                {
-                    "Low Energy": energies[f"{energy_bins_cols_name['electrons']}_Low_Energy"],
-                    "Bin Width": energies[f"{energy_bins_cols_name['electrons']}_Width"],
-                },
-                index=df_electrons[self.vda.ELECTRON_COLUMN_PREFIX].columns,
-            )
-            df_energies_electrons["High Energy"] = (
-                df_energies_electrons["Low Energy"] + df_energies_electrons["Bin Width"]
-            )
-
-            if "protons" in particles and "electrons" in particles:
-                df_sensors.append(pd.concat([df_energies_protons, df_energies_electrons]))
-            elif "protons" in particles:
-                df_sensors.append(pd.concat([df_energies_protons]))
-            elif "electrons" in particles:
-                df_sensors.append(pd.concat([df_energies_electrons]))
-
-        self.vda.df_energies = pd.concat(
-            df_sensors,
-            keys=[s for s, p in self.vda.parameters.AVAILABLE_SENSORS_PARTICLES.items() if len(p) > 0],
-            names=["sensor", "channel"],
-        )
-
+        self.vda.construct_energies_df()
         with pd.option_context("display.max_rows", None):
             display(self.vda.df_energies)
 
@@ -310,18 +182,16 @@ class VDA_nb_displayer:
         def close_options():
             out_options.clear_output(wait=False)
 
-        def remove_channel(btn):
-            key = btn.name
-            self._delete_parameter_index("channel_groups", key, cascade=True, index_sep="|")
-            for i, element in enumerate(wrapper_channels.children):
-                btn_remove = element.children[1]
-                if btn_remove.name == key:
-                    element.close()
-                    removed_index = i
-                    break
-            temp = list(wrapper_channels.children)
-            del temp[removed_index]
-            wrapper_channels.children = tuple(temp)
+        def remove_channel(species, label, wgt_channel):
+            channel_groups = self.vda.parameters.channel_groups
+            del channel_groups[species][label]
+            if len(channel_groups[species]) == 0:
+                del channel_groups[species]
+            wrapper_channels.children = tuple(c for c in wrapper_channels.children if c is not wgt_channel)
+            wgt_channel.close()
+
+        def set_channels(species, label, channels):
+            self.vda.parameters.channel_groups[species][label]["channels"] = list(channels)
 
         def add_channel(btn, selected=None):
             if type(btn) == str:
@@ -336,35 +206,28 @@ class VDA_nb_displayer:
             sensor, species = tuple([x.strip().lower() for x in channel.split("/")])
             label = f"{channel} Channel {num_channels[channel]}"
 
-            value = [] if selected is None else selected
-            try:
-                self._change_parameter_index("channel_groups", f"{species}|{label}", {"sensor": sensor, "channels": value}, "|")
-            except KeyError:
-                self._change_parameter_index("channel_groups", species, {})
-                self._change_parameter_index("channel_groups", f"{species}|{label}", {"sensor": sensor, "channels": value}, "|")
-            
+            value = [] if selected is None else list(selected)
+            self.vda.parameters.channel_groups.setdefault(species, {})[label] = {"sensor": sensor, "channels": value}
+
             wgt_html = widgets.HTML(value=f"<style>p{{word-wrap: break-word; margin: 0px; text-align: center;}}</style> <p>{label}</p>")
 
             btn_remove = widgets.Button(description="Remove Channel", tooltip=f"Remove {label}")
-            btn_remove.name = f"{species}|{label}"
-            btn_remove.on_click(remove_channel)
 
             options = av_channels[sensor][species]
             wgt_select = widgets.SelectMultiple(options=options,
                                                 value=value,
-                                                description=f"{species}|{label}|channels",
+                                                description="",
                                                 layout={
                                                     "min_width": "max-content",
                                                     "height": f"{2.2*len(options) + 2}ch",
                                                     "max_height": "300px"
                                                 },
                                                 style={"description_width": "0px"})
-            wgt_select.observe(lambda traitlet: self._change_parameter_index("channel_groups", 
-                                                                             traitlet["owner"].description, 
-                                                                             list(traitlet["new"]), "|"), 
-                               names="value")
+            wgt_select.observe(lambda traitlet: set_channels(species, label, traitlet["new"]), names="value")
 
-            wrapper_channels.children += (widgets.VBox([wgt_html, btn_remove, wgt_select], layout={"border": "solid 1px"}),)
+            wgt_channel = widgets.VBox([wgt_html, btn_remove, wgt_select], layout={"border": "solid 1px"})
+            btn_remove.on_click(lambda _: remove_channel(species, label, wgt_channel))
+            wrapper_channels.children += (wgt_channel,)
             close_options()
         
         @out_options.capture(clear_output=True, wait=True)
@@ -402,9 +265,7 @@ class VDA_nb_displayer:
                                          disabled=False,
                                          style=self.WIDGETS_STYLE,
                                          layout=self.WIDGETS_LAYOUT)
-        wgt_resample_freq.observe(lambda traitlet: self._change_parameter("resample_frequency", 
-                                                                          traitlet["new"]),
-                                  names="value")
+        self._bind(wgt_resample_freq, "resample_frequency")
         
         display(widgets.VBox([wrapper_btns, grp_viewings, wgt_resample_freq, wrapper_channels]))
 
@@ -421,9 +282,7 @@ class VDA_nb_displayer:
                              description="Onset determination method:", 
                              disabled=False, 
                              style=self.WIDGETS_STYLE)
-        w.observe(lambda traitlet: self._change_parameter("onset_method", 
-                                                          traitlet["new"]),
-                  names="value")
+        self._bind(w, "onset_method")
         return w
 
     def display_onset_method_parameters(self):
@@ -450,14 +309,11 @@ class VDA_nb_displayer:
                 widget_params["description"] = f'{parameter} | {pinfo["description"]}'
 
             w = widget_type(**widget_params)
-            w.observe(
-                lambda traitlet: self._change_parameter_index(
-                    "onset_method_parameters",
-                    traitlet["owner"].description.split("|")[0].strip(),
-                    traitlet["new"],
-                ),
-                names="value",
-            )
+
+            def set_value(traitlet, parameter=parameter):
+                self.vda.parameters.onset_method_parameters[parameter] = traitlet["new"]
+
+            w.observe(set_value, names="value")
 
             list_param_widgets.append(w)
 
@@ -569,8 +425,7 @@ class VDA_nb_displayer:
                              description="Onset selection method:", 
                              disabled=False, 
                              style=self.WIDGETS_STYLE)
-        w.observe(lambda traitlet: self._change_parameter("onset_selection", traitlet["new"]),
-                  names="value")
+        self._bind(w, "onset_selection")
         return w
 
     def _display_onset_selection(self):
@@ -675,8 +530,7 @@ class VDA_nb_displayer:
                              disabled=False, 
                              indent=True, 
                              style=self.WIDGETS_STYLE)
-        w.observe(lambda traitlet: self._change_parameter("view_dfs", traitlet["new"]),
-                  names="value")
+        self._bind(w, "view_dfs")
         return w
 
     def select_onsets(self):
@@ -697,42 +551,6 @@ class VDA_nb_displayer:
         if self.vda.parameters.onset_selection == OnsetSelection.INTERACTIVE:
             return self._display_onset_selection()
         elif self.vda.parameters.onset_selection == OnsetSelection.CUSTOM_LIST:
-            # # Custom list
-            # df_selections = pd.DataFrame({})
-            # for index_event, df_event in self.df_options.groupby(level=0):
-            #     for sensor, particles in self.vda.parameters.sensors_particles.items():
-            #         for particle in particles:
-            #             if particle == "protons":
-            #                 particle_prefix = self.PROTON_COLUMN_PREFIX
-            #             elif particle == "electrons":
-            #                 particle_prefix = self.ELECTRON_COLUMN_PREFIX
-            #             for channel, df_channel in df_event.loc[
-            #                 index_event, sensor, particle, particle_prefix
-            #             ].groupby(level=0):
-            #                 channel_low = (channels := channel.split("-"))[0]
-            #                 channel_high = channels[1]
-            #                 for viewing, df_viewing in df_channel.groupby(level=1):
-            #                     self._plot_onset(
-            #                         self.df_grouped.loc[index_event][
-            #                             sensor,
-            #                             particle,
-            #                             viewing,
-            #                             particle_prefix,
-            #                             channel,
-            #                         ],
-            #                         df_channel.loc[channel, viewing][
-            #                             "Onset Time"
-            #                         ].to_pydatetime(),
-            #                         df_channel.loc[channel, viewing][
-            #                             "Background Start"
-            #                         ].to_pydatetime(),
-            #                         df_channel.loc[channel, viewing][
-            #                             "Background End"
-            #                         ].to_pydatetime(),
-            #                         f"Event {index_event}, {sensor}/{particle}, {self.vda.df_energies.loc[sensor, channel_low]['Low Energy']:.2f}-{self.vda.df_energies.loc[sensor, channel_high]['High Energy']:.2f} MeV, {viewing}",
-            #                     )
-
-            # assert False
-            pass
+            print('The "Custom List" onset selection is not implemented yet; no onsets are selected')
 
     

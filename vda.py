@@ -228,6 +228,47 @@ class VDA:
             self.END_TIME_COLNAME,
         ]].to_csv(filepath, date_format="%Y-%m-%d %H:%M:%S")
 
+    def construct_energies_df(self):
+        """Creates self.df_energies with the energy bins of every channel of the available sensors and particles"""
+        df_sensors = {}
+        for sensor, particles in self.parameters.AVAILABLE_SENSORS_PARTICLES.items():
+            if len(particles) == 0:
+                continue
+            df_protons, df_electrons, energies = self._epd_load(
+                sensor=sensor,
+                level="l2",
+                startdate=self.df_times.iloc[0][self.START_TIME_COLNAME],
+                enddate=self.df_times.iloc[0][self.END_TIME_COLNAME],
+                viewing="sun",
+                path=self.DATA_PATH,
+                autodownload=True,
+            )
+            df_particles = []
+            for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
+                if particle not in particles:
+                    continue
+                particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
+                df_particle = df_particle.rename(
+                    lambda x: x.replace(self.RAW_FLUX_COLUMN[sensor][particle], particle_prefix),
+                    axis="columns",
+                )
+                energy_bins = self.RAW_ENERGY_BINS_COLUMN[sensor][particle]
+                df_energies = pd.DataFrame(
+                    {
+                        "Low Energy": energies[f"{energy_bins}_Low_Energy"],
+                        "Bin Width": energies[f"{energy_bins}_Width"],
+                    },
+                    index=df_particle[particle_prefix].columns,
+                )
+                df_energies["High Energy"] = df_energies["Low Energy"] + df_energies["Bin Width"]
+                df_particles.append(df_energies)
+            df_sensors[sensor] = pd.concat(df_particles)
+
+        self.df_energies = pd.concat(df_sensors.values(), keys=list(df_sensors), names=["sensor", "channel"])
+
+        if self.parameters.view_dfs:
+            return self.df_energies
+
     def _iter_sensor_particles(self):
         """Yields (sensor, particle, particle_prefix) for the selected sensors and particles"""
         for sensor, particles in self.parameters.sensors_particles.items():
