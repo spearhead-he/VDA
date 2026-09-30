@@ -11,14 +11,19 @@
   - [About](#about)
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
+    - [Events](#events)
+    - [Background window](#background-window)
+    - [Onset selection](#onset-selection)
+    - [Results](#results)
+    - [Changes from v0.2.0](#changes-from-v020)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
 
 ## About
 
-The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Energetic Particle (SEP) events. Each event is provided to the tool as a point in time. The user can parameterize the given Notebook and control which particle species are used, the sensor from which they are detected, and the viewings to be considered.
+The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Energetic Particle (SEP) events. The events are provided to the tool as datetime ranges or reference times, from a file or entered in the Notebook. The user can parameterize the given Notebook and control which particle species are used, the sensor from which they are detected, the viewings to be considered, and the background window of each event.
 
-The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is a plot of the VDA analysis for each inputted event.
+The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is the release time and apparent path length of each inputted event, with a plot of its VDA analysis.
 
 *Tool is still under active development and its results should be handled with caution.* 
 
@@ -44,10 +49,46 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 
 The Notebook is separated into three main sections:
 - Imports & Setup
-- User Inputs
-- Run
+- Parameterize
+- VDA
 
-The user should run the cell(s) of the first section and then follow the instructions iside the Notebook to properly fill the input forms. The cells of the "Run" section can then be run without changing anything.
+The user should run the cell(s) of the first section and then follow the instructions inside the Notebook to properly fill the input forms. The cells of the "VDA" section can then be run without changing anything.
+
+### Events
+
+The events are given with a .csv file, or as datetime ranges entered in the Notebook ("Add Event" button) if no file is given. The first column of the file is the event number, and the type of the file is deduced from the names of the other columns:
+
+| Columns after the event number | Meaning | Example |
+|---|---|---|
+| `Start Time, End Time` | Datetime range of the data. The default background window is used | [examples/datetime_range_only_example.csv](examples/datetime_range_only_example.csv) |
+| `Start Time, BG End, End Time` | As above, with the background window from `Start Time` to `BG End` | [examples/datetime_range_example.csv](examples/datetime_range_example.csv) |
+| `Start Time, BG Start, BG End, End Time` | As above, with the background window from `BG Start` to `BG End`. Empty cells use the default background window | [examples/datetime_range_bg_example.csv](examples/datetime_range_bg_example.csv) |
+| `Reference Time` | Reference datetime of the event. The datetime range of the data is set with the hours prior to and after it | [examples/reference_times_example.csv](examples/reference_times_example.csv) |
+
+The datetimes can be in any format supported by `pandas.to_datetime` (e.g. `2024-12-31 00:00:00`).
+
+### Background window
+
+Each event has a background window, used for the onset determination:
+- the background window of the events file, if given,
+- otherwise the default background window, in minutes after the start of the event's data (slider in the Notebook).
+
+The background window of each event can be checked and changed in the Notebook with the event dropdown and the "Background" slider, or set back to the default one. The chosen windows can be saved with `vda.save_times("path.csv")`, and the saved file can be used as the events file of later runs.
+
+### Onset selection
+
+- Use all: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used.
+- Interactive: the determined onsets are shown one channel at a time, chosen with the event and channel dropdowns or the "Previous" / "Next" buttons, and the viewing whose onset is used is selected per channel (or none, to leave the channel out). The selection starts from the viewings of "Use all".
+
+### Results
+
+For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot, which is also saved as a .png file. The results of all the events are stored in the `vda.results` table. For many events, `vda.compute_vda()` followed by `vda.print_results()` gives the results without creating the plots.
+
+### Changes from v0.2.0
+
+- The input type selection is replaced by a single events file (`input_filepath`), whose type is deduced from its columns. Without a file, `date_ranges` (list of (start, end) datetimes) replaces `date_start` / `date_end`.
+- The background window is given in the events file or as a default in minutes after the start of the data, instead of point indices (`bg_start` / `bg_end` of the onset method).
+- Code that sets a removed parameter gets an error explaining its replacement.
 
 ## Contributing
 
