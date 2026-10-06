@@ -604,8 +604,8 @@ class VDA:
             ]
         )
 
-        # if self.parameters.view_dfs:
-        #     return self.df_options
+        if self.parameters.view_dfs:
+            return self.df_options
 
     def _channel_energy_range(self, sensor, particle, particle_prefix, channel) -> tuple:
         """Returns the (low, high) energy of a grouped channel in MeV"""
