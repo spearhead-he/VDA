@@ -11,11 +11,8 @@
   - [About](#about)
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
-    - [Events](#events)
-    - [Background window](#background-window)
-    - [Onset selection](#onset-selection)
-    - [Results](#results)
-    - [Changes from v0.2.0](#changes-from-v020)
+  - [What's new in v0.4.0](#whats-new-in-v040)
+  - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
 
@@ -47,51 +44,36 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 
 ## How to use
 
-The Notebook has a setup cell, a form with all the parameters, and one cell per step of the analysis:
-1. Setup
-2. Parameters: a form with the tabs Events, Data, Energy channels, Onsets and Views/Plots
-3. Data: creates the events, downloads (or loads) their data and groups the energy channels
-4. Background windows: checks and changes the background window of each event
-5. Onsets: determines the onsets and selects the ones used for the VDA
-6. VDA: prints the results and plots them
+Open the Notebook `vda_tool.ipynb` and run its cells in order: a setup cell, a form with all the parameters (tabs Events, Data, Energy channels, Onsets and Views/Plots), and one cell per step of the analysis:
 
-The analysis code (`vda.py`, `vda_tool_configuration.py`, `vda_views.py`) can also be used without the Notebook; `vda_notebook.py` contains the Notebook interface.
+```python
+from vda_notebook import VDA_notebook
+tool = VDA_notebook()
 
-### Events
+tool.parameters_form()       # all the parameters
+tool.run_data()              # events, data download and grouping of the energy channels
+tool.background_selection()  # background window of each event
+tool.run_onsets()            # onsets, and their selection
+tool.run_vda()               # results and plots
+```
 
-The events are given with a .csv file, or as datetime ranges entered in the Notebook ("Add Event" button) if no file is given. The first column of the file is the event number, and the type of the file is deduced from the names of the other columns:
+The events are given with a .csv file (datetime ranges or reference times, see the [examples](examples/)) or entered in the form. See the [user guide](docs/user_guide.md) for details.
 
-| Columns after the event number | Meaning | Example |
-|---|---|---|
-| `Start Time, End Time` | Datetime range of the data. The default background window is used | [examples/datetime_range_only_example.csv](examples/datetime_range_only_example.csv) |
-| `Start Time, BG End, End Time` | As above, with the background window from `Start Time` to `BG End` | [examples/datetime_range_example.csv](examples/datetime_range_example.csv) |
-| `Start Time, BG Start, BG End, End Time` | As above, with the background window from `BG Start` to `BG End`. Empty cells use the default background window | [examples/datetime_range_bg_example.csv](examples/datetime_range_bg_example.csv) |
-| `Reference Time` | Reference datetime of the event. The datetime range of the data is set with the hours prior to and after it | [examples/reference_times_example.csv](examples/reference_times_example.csv) |
+## What's new in v0.4.0
 
-The datetimes can be in any format supported by `pandas.to_datetime` (e.g. `2024-12-31 00:00:00`).
+- The Notebook has a form with all the parameters and one cell per step of the analysis (6 code cells instead of 26).
+- The channel selection lists show the energy range of each channel.
+- Saved data include their resample frequency, and the load and save options are just file paths.
+- Removed or misspelled parameters raise an error explaining what to use instead.
+- The "Custom List" onset selection, which was not implemented, is removed.
 
-### Background window
+See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
-Each event has a background window, used for the onset determination:
-- the background window of the events file, if given,
-- otherwise the default background window, in minutes after the start of the event's data (slider in the Notebook).
+## Documentation
 
-The background window of each event can be checked and changed in the Notebook with the event dropdown and the "Background" slider, or set back to the default one. The chosen windows can be saved with `tool.vda.save_times("path.csv")`, and the saved file can be used as the events file of later runs.
-
-### Onset selection
-
-- Use all: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used. With the Notebook checkboxes the order is sun, asun, north, south, omni; a different priority can be set with `tool.parameters.viewings`, e.g. `["north", "sun"]`.
-- Interactive: the determined onsets are shown one channel at a time, chosen with the event and channel dropdowns or the "Previous" / "Next" buttons, and the viewing whose onset is used is selected per channel (or none, to leave the channel out). The selection starts from the viewings of "Use all".
-
-### Results
-
-For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot, which can also be saved as a .png file (Views/Plots tab). The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.
-
-### Changes from v0.2.0
-
-- The input type selection is replaced by a single events file (`input_filepath`), whose type is deduced from its columns. Without a file, `date_ranges` (list of (start, end) datetimes) replaces `date_start` / `date_end`.
-- The background window is given in the events file or as a default in minutes after the start of the data, instead of point indices (`bg_start` / `bg_end` of the onset method).
-- Code that sets a removed parameter gets an error explaining its replacement.
+- [User guide](docs/user_guide.md): the Notebook, the parameters, the events files, background windows, onset selection and results
+- [Using the VDA tool without the notebook](docs/library.md): the analysis code in scripts
+- [Changelog](CHANGELOG.md)
 
 ## Contributing
 
