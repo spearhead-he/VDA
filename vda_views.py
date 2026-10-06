@@ -419,8 +419,7 @@ class VDA_nb_displayer:
 
     def display_onset_selection_selection(self):
         w = widgets.Dropdown(options=[("Use all", OnsetSelection.USE_ALL),
-                                      ("Interactive", OnsetSelection.INTERACTIVE),
-                                      ("Custom List", OnsetSelection.CUSTOM_LIST)], 
+                                      ("Interactive", OnsetSelection.INTERACTIVE)], 
                              value=self.vda.parameters.onset_selection, 
                              description="Onset selection method:", 
                              disabled=False, 
@@ -537,20 +536,17 @@ class VDA_nb_displayer:
         temp_df = self.vda.df_options.droplevel(level=5)
         df_index = temp_df.index[~temp_df.index.duplicated(keep="first")]
         self.vda.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
-        if self.vda.parameters.onset_selection in (OnsetSelection.USE_ALL, OnsetSelection.INTERACTIVE):
-            # Use all (the first viewing with an onset, in the order of the viewings).
-            # Interactive selection starts from the same viewings
-            for i, _ in self.vda.parameters.selected_onsets.iterrows():
-                for v in self.vda.parameters.viewings:
-                    try:
-                        self.vda.df_options.loc[i+(v,)]
-                    except KeyError:
-                        continue
-                    self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
-                    break
+        # Use all (the first viewing with an onset, in the order of the viewings).
+        # Interactive selection starts from the same viewings
+        for i, _ in self.vda.parameters.selected_onsets.iterrows():
+            for v in self.vda.parameters.viewings:
+                try:
+                    self.vda.df_options.loc[i+(v,)]
+                except KeyError:
+                    continue
+                self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
+                break
         if self.vda.parameters.onset_selection == OnsetSelection.INTERACTIVE:
             return self._display_onset_selection()
-        elif self.vda.parameters.onset_selection == OnsetSelection.CUSTOM_LIST:
-            print('The "Custom List" onset selection is not implemented yet; no onsets are selected')
 
     
