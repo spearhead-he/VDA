@@ -204,6 +204,24 @@ def test_save_times_round_trip(tmp_path):
     assert saved._bg_window_source(2) == "input file"
 
 
+# ---------------------------------------------------------------- saved data
+
+@pytest.mark.parametrize("saved_attrs, expected_frequency, message", [
+    ({"resample_frequency": "10min"}, "10min", "Resample frequency set to '10min'"),
+    ({"resample_frequency": "5min"}, "5min", None),
+    ({}, "5min", "do not include their resample frequency"),
+])
+def test_loaded_data_resample_frequency(tmp_path, capsys, saved_attrs, expected_frequency, message):
+    df = pd.DataFrame({"x": [1.0, 2.0]})
+    df.attrs = dict(saved_attrs)
+    df.to_pickle(tmp_path / "data.pkl")
+    v = make_vda(resample_frequency="5min", load_data_filepath=str(tmp_path / "data.pkl"))
+    v.construct_particles_df()
+    assert v.parameters.resample_frequency == expected_frequency
+    out = capsys.readouterr().out
+    assert (message in out) if message else ("esample" not in out)
+
+
 # ---------------------------------------------------------------- onset selection
 
 def vda_with_onset_options(viewings):
@@ -303,10 +321,13 @@ def test_vda_fit_needs_two_points(fixed_spacecraft_distance, capsys):
 
 # ---------------------------------------------------------------- parameters
 
-@pytest.mark.parametrize("name", ["input_type", "date_range_filepath", "reference_times_filepath",
-                                  "date_start", "date_end", "viewings_tt"])
-def test_removed_parameters(name):
-    with pytest.raises(AttributeError, match="removed in v0.3.0"):
+@pytest.mark.parametrize("name, version", [
+    ("input_type", "v0.3.0"), ("date_range_filepath", "v0.3.0"), ("reference_times_filepath", "v0.3.0"),
+    ("date_start", "v0.3.0"), ("date_end", "v0.3.0"),
+    ("viewings_tt", "v0.4.0"), ("load_data", "v0.4.0"), ("save_data", "v0.4.0"),
+])
+def test_removed_parameters(name, version):
+    with pytest.raises(AttributeError, match=f"removed in {version}"):
         setattr(VDA_parameters(), name, None)
 
 

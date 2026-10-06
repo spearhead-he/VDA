@@ -48,14 +48,17 @@ AVAILABLE_ONSET_METHODS = {
     }
 }
 
-# Parameters removed in v0.3.0 and what replaces them
+# Removed parameters: the version they were removed in and what replaces them
 REMOVED_PARAMETERS = {
-    "input_type": "Set input_filepath to the events file (its type is deduced from its columns), or leave it empty to use date_ranges.",
-    "date_range_filepath": "Set input_filepath to the events file.",
-    "reference_times_filepath": "Set input_filepath to the events file.",
-    "date_start": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
-    "date_end": "Set date_ranges to the list of (start, end) datetime ranges of the events.",
-    "viewings_tt": 'Set viewings to a list of viewing names, e.g. ["sun", "north"].',
+    "input_type": ("v0.3.0", "Set input_filepath to the events file (its type is deduced from its columns), "
+                             "or leave it empty to use date_ranges."),
+    "date_range_filepath": ("v0.3.0", "Set input_filepath to the events file."),
+    "reference_times_filepath": ("v0.3.0", "Set input_filepath to the events file."),
+    "date_start": ("v0.3.0", "Set date_ranges to the list of (start, end) datetime ranges of the events."),
+    "date_end": ("v0.3.0", "Set date_ranges to the list of (start, end) datetime ranges of the events."),
+    "viewings_tt": ("v0.4.0", 'Set viewings to a list of viewing names, e.g. ["sun", "north"].'),
+    "load_data": ("v0.4.0", "Set load_data_filepath to the saved data file, or leave it empty to download the data."),
+    "save_data": ("v0.4.0", "Set save_data_filepath to the file to save the data to, or leave it empty to not save them."),
 }
 
 
@@ -74,9 +77,9 @@ class VDA_parameters:
     bg_hours_after: int = 5
     # Default background window of the events without one in the events file, in minutes after the start time
     bg_after_start: tuple = (0, 60)
-    load_data: bool = False
+    # .pkl file with previously saved data to use instead of downloading it. If empty, the data are downloaded
     load_data_filepath: str = ""
-    save_data: bool = False
+    # .pkl file to save the data to. If empty, the data are not saved
     save_data_filepath: str = ""
     # Selected viewings. Their order is the priority of the "Use all" onset selection
     viewings: list = field(default_factory=lambda: ["sun"])
@@ -119,7 +122,8 @@ class VDA_parameters:
     def __setattr__(self, name, value):
         # catches removed parameters and typos, which would otherwise be silently ignored
         if name in REMOVED_PARAMETERS:
-            raise AttributeError(f"The {name} parameter was removed in v0.3.0. {REMOVED_PARAMETERS[name]}")
+            version, replacement = REMOVED_PARAMETERS[name]
+            raise AttributeError(f"The {name} parameter was removed in {version}. {replacement}")
         if name not in {f.name for f in fields(self)}:
             raise AttributeError(f"VDA_parameters has no parameter '{name}'")
         if name == "onset_selection":
