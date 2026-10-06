@@ -166,7 +166,8 @@ class VDA:
         It applies to the events without a background window from the events file or set_bg_window.
         """
         self.parameters.bg_after_start = (start_minutes, end_minutes)
-        for index_event, source in self._bg_sources.items():
+        # before construct_times_df there are no events yet, the default is applied when they are created
+        for index_event, source in getattr(self, "_bg_sources", {}).items():
             if source == "default":
                 self._apply_default_bg_window(index_event)
 
@@ -228,8 +229,14 @@ class VDA:
             self.END_TIME_COLNAME,
         ]].to_csv(filepath, date_format="%Y-%m-%d %H:%M:%S")
 
-    def construct_energies_df(self):
-        """Creates self.df_energies with the energy bins of every channel of the available sensors and particles"""
+    def construct_energies_df(self, startdate=None, enddate=None):
+        """Creates self.df_energies with the energy bins of every channel of the available sensors and particles.
+
+        The energy bins are read from the data of startdate to enddate, by default the data range of the first event.
+        """
+        if startdate is None or enddate is None:
+            startdate = self.df_times.iloc[0][self.START_TIME_COLNAME]
+            enddate = self.df_times.iloc[0][self.END_TIME_COLNAME]
         df_sensors = {}
         for sensor, particles in self.parameters.AVAILABLE_SENSORS_PARTICLES.items():
             if len(particles) == 0:
@@ -237,8 +244,8 @@ class VDA:
             df_protons, df_electrons, energies = self._epd_load(
                 sensor=sensor,
                 level="l2",
-                startdate=self.df_times.iloc[0][self.START_TIME_COLNAME],
-                enddate=self.df_times.iloc[0][self.END_TIME_COLNAME],
+                startdate=startdate,
+                enddate=enddate,
                 viewing="sun",
                 path=self.DATA_PATH,
                 autodownload=True,
@@ -338,13 +345,32 @@ class VDA:
             print(f"Done")
         return pd.concat(df_rows, keys=keys, names=[self.EVENT_INDEX_NAME, "Time"])
 
+    def _use_saved_resample_frequency(self) -> None:
+        def describe(frequency):
+            return repr(frequency) if frequency else "no resampling"
+
+        saved = self.df_data.attrs.get("resample_frequency")
+        current = self.parameters.resample_frequency
+        if saved is None:
+            print(f"The loaded data do not include their resample frequency, the current one ({describe(current)}) is used")
+        elif saved != current:
+            self.parameters.resample_frequency = saved
+            print(f"Resample frequency set to {describe(saved)}, the one of the loaded data (instead of {describe(current)})")
+
     def construct_particles_df(self):
-        if self.parameters.load_data:
+        """Loads the data from parameters.load_data_filepath, or downloads them if it is empty.
+
+        The data are saved to parameters.save_data_filepath, if it is set.
+        """
+        if self.parameters.load_data_filepath:
             self.df_data = pd.read_pickle(self.parameters.load_data_filepath)
+            self._use_saved_resample_frequency()
         else:
             self.df_data = self._download_data()
-            if self.parameters.save_data:
-                self.df_data.to_pickle(self.parameters.save_data_filepath)
+            # saved with the data, so that loaded data are used with their resample frequency
+            self.df_data.attrs["resample_frequency"] = self.parameters.resample_frequency
+        if self.parameters.save_data_filepath:
+            self.df_data.to_pickle(self.parameters.save_data_filepath)
 
         if self.parameters.view_dfs:
             return self.df_data

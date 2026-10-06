@@ -25,6 +25,7 @@ class VDA_nb_displayer:
             value=self.vda.parameters.input_filepath,
             placeholder="Path to .csv - Leave blank to use the datetime range below",
             description="Events file:",
+            continuous_update=False,
             disabled=False,
             style=self.WIDGETS_STYLE,
             layout=self.WIDGETS_LAYOUT,
@@ -36,7 +37,7 @@ class VDA_nb_displayer:
         """Displays the inputs of the data range, depending on the events file"""
         filepath = self.vda.parameters.input_filepath
         if not filepath:
-            return self._display_date_ranges()
+            return self.display_date_ranges()
 
         try:
             file_type = self.vda.times_file_type(filepath)
@@ -44,29 +45,7 @@ class VDA_nb_displayer:
             return widgets.HTML(value=f"<pre>{html.escape(str(e))}</pre>")
 
         if file_type == "reference times":
-            wgt_tw_prior = widgets.IntSlider(
-                value=self.vda.parameters.bg_hours_prior,
-                min=0,
-                max=12,
-                step=1,
-                description="Hours prior to the reference time:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            self._bind(wgt_tw_prior, "bg_hours_prior")
-            wgt_tw_after = widgets.IntSlider(
-                value=self.vda.parameters.bg_hours_after,
-                min=0,
-                max=12,
-                step=1,
-                description="Hours after the reference time:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            self._bind(wgt_tw_after, "bg_hours_after")
-            return widgets.VBox([wgt_tw_prior, wgt_tw_after])
+            return self.display_reference_hours()
 
         df = self.vda._read_times_file(filepath)
         with_bg = df[self.vda.BG_END_TIME_COLNAME].notna().sum()
@@ -74,7 +53,33 @@ class VDA_nb_displayer:
             value=f"Datetime ranges from the events file: {len(df)} events, {with_bg} with a background window"
         )
 
-    def _display_date_ranges(self):
+    def display_reference_hours(self):
+        """Hours prior to and after the reference time, for files with reference times"""
+        wgt_tw_prior = widgets.IntSlider(
+            value=self.vda.parameters.bg_hours_prior,
+            min=0,
+            max=12,
+            step=1,
+            description="Hours prior to the reference time:",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        self._bind(wgt_tw_prior, "bg_hours_prior")
+        wgt_tw_after = widgets.IntSlider(
+            value=self.vda.parameters.bg_hours_after,
+            min=0,
+            max=12,
+            step=1,
+            description="Hours after the reference time:",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        self._bind(wgt_tw_after, "bg_hours_after")
+        return widgets.VBox([wgt_tw_prior, wgt_tw_after])
+
+    def display_date_ranges(self):
         """One row with the datetime range of each event, and a button to add events"""
         date_ranges = self.vda.parameters.date_ranges
         wrapper_rows = widgets.VBox()
@@ -126,47 +131,28 @@ class VDA_nb_displayer:
         return widgets.VBox([wrapper_rows, btn_add])
 
     def display_load_data_option(self):
-        w = widgets.Checkbox(
-            value=self.vda.parameters.load_data,
-            description="Load data",
+        w = widgets.Text(
+            value=self.vda.parameters.load_data_filepath,
+            placeholder="Path to .pkl - Leave blank to download the data",
+            description="Load the data from:",
             disabled=False,
-            indent=True,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
         )
-        self._bind(w, "load_data")
+        self._bind(w, "load_data_filepath")
         return w
 
     def display_save_data_option(self):
-        if self.vda.parameters.load_data:
-            wgt_load_data_filepath = widgets.Text(
-                value=self.vda.parameters.load_data_filepath,
-                placeholder="Path to .pkl",
-                description="File with saved DataFrame:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            self._bind(wgt_load_data_filepath, "load_data_filepath")
-            vbox = widgets.VBox([wgt_load_data_filepath])
-        else:
-            wgt_save_data = widgets.Checkbox(
-                value=self.vda.parameters.save_data,
-                description="Save downloaded data",
-                disabled=False,
-                indent=True,
-            )
-            self._bind(wgt_save_data, "save_data")
-            wgt_save_data_filepath = widgets.Text(
-                value=self.vda.parameters.save_data_filepath,
-                placeholder="Path with .pkl extension",
-                description="File to save data DataFrame:",
-                disabled=False,
-                style=self.WIDGETS_STYLE,
-                layout=self.WIDGETS_LAYOUT,
-            )
-            self._bind(wgt_save_data_filepath, "save_data_filepath")
-            vbox = widgets.VBox([wgt_save_data, wgt_save_data_filepath])
-
-        return vbox
+        w = widgets.Text(
+            value=self.vda.parameters.save_data_filepath,
+            placeholder="Path to .pkl - Leave blank to not save the data",
+            description="Save the data to:",
+            disabled=False,
+            style=self.WIDGETS_STYLE,
+            layout=self.WIDGETS_LAYOUT,
+        )
+        self._bind(w, "save_data_filepath")
+        return w
 
     def construct_energies_df(self):
         self.vda.construct_energies_df()
@@ -174,10 +160,31 @@ class VDA_nb_displayer:
             display(self.vda.df_energies)
 
     def display_particle_selection(self):
+        """Channel groups, viewings and resample frequency"""
+        return widgets.VBox([
+            self.display_channel_groups(),
+            self.display_viewings(),
+            self.display_resample_frequency(),
+        ])
+
+    def _channel_options(self, sensor, species):
+        """Channel numbers with their energy range, if the energies table is available"""
+        channels = self.vda.parameters.AVAILABLE_CHANNELS[sensor][species]
+        df_energies = getattr(self.vda, "df_energies", None)
+        if df_energies is None:
+            return channels
+        particle_prefix = self.vda.PARTICLE_COLUMN_PREFIX[species]
+        options = []
+        for c in channels:
+            energies = df_energies.loc[(sensor, f"{particle_prefix}_{c}")]
+            options.append((f"{c}: {energies['Low Energy']:.3g}-{energies['High Energy']:.3g} MeV", c))
+        return options
+
+    def display_channel_groups(self):
+        """Channel groups, with buttons to add and remove them"""
         out_options = widgets.Output()
         wrapper_channels = widgets.HBox()
         num_channels = {}
-        av_channels = self.vda.parameters.AVAILABLE_CHANNELS
 
         def close_options():
             out_options.clear_output(wait=False)
@@ -213,7 +220,7 @@ class VDA_nb_displayer:
 
             btn_remove = widgets.Button(description="Remove Channel", tooltip=f"Remove {label}")
 
-            options = av_channels[sensor][species]
+            options = self._channel_options(sensor, species)
             wgt_select = widgets.SelectMultiple(options=options,
                                                 value=value,
                                                 description="",
@@ -246,19 +253,22 @@ class VDA_nb_displayer:
         btn_choose = widgets.Button(description="Add Channel")
         btn_choose.on_click(lambda _: show_options())
         wrapper_btns = widgets.HBox([btn_choose, out_options])
-        
+        return widgets.VBox([wrapper_btns, wrapper_channels])
+
+    def display_viewings(self):
         list_wgt_chk_viewings = []
         for viewing in self.vda.parameters.AVAILABLE_VIEWINGS:
             w = widgets.Checkbox(value=viewing in self.vda.parameters.viewings, 
                                  description=viewing, 
                                  disabled=False, 
-                                 indent=True)
+                                 indent=False,
+                                 layout=widgets.Layout(width="auto"))
             w.observe(lambda traitlet, viewing=viewing: self._select_viewing(viewing, traitlet["new"]),
                       names="value")
             list_wgt_chk_viewings.append(w)
-        grp_viewings = widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})] + list_wgt_chk_viewings)
-        
+        return widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})] + list_wgt_chk_viewings)
 
+    def display_resample_frequency(self):
         wgt_resample_freq = widgets.Text(value=self.vda.parameters.resample_frequency,
                                          placeholder="Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling",
                                          description="Resample frequency:",
@@ -266,8 +276,7 @@ class VDA_nb_displayer:
                                          style=self.WIDGETS_STYLE,
                                          layout=self.WIDGETS_LAYOUT)
         self._bind(wgt_resample_freq, "resample_frequency")
-        
-        display(widgets.VBox([wrapper_btns, grp_viewings, wgt_resample_freq, wrapper_channels]))
+        return wgt_resample_freq
 
     def _select_viewing(self, viewing, selected):
         """Adds or removes a viewing. The checkboxes keep the order of AVAILABLE_VIEWINGS"""
@@ -324,8 +333,13 @@ class VDA_nb_displayer:
             step = max(1, int(pd.Timedelta(self.vda.parameters.resample_frequency).total_seconds() // 60))
         except ValueError:
             step = 1
-        df_times = self.vda.df_times
-        longest_event = int((df_times[self.vda.END_TIME_COLNAME] - df_times[self.vda.START_TIME_COLNAME]).max().total_seconds() // 60)
+        df_times = getattr(self.vda, "df_times", None)
+        if df_times is None:
+            # before the events are created: up to one day
+            longest_event = 24 * 60
+        else:
+            durations = df_times[self.vda.END_TIME_COLNAME] - df_times[self.vda.START_TIME_COLNAME]
+            longest_event = int(durations.max().total_seconds() // 60)
         w = widgets.IntRangeSlider(
             value=self.vda.parameters.bg_after_start,
             min=0,

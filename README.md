@@ -47,12 +47,15 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 
 ## How to use
 
-The Notebook is separated into three main sections:
-- Imports & Setup
-- Parameterize
-- VDA
+The Notebook has a setup cell, a form with all the parameters, and one cell per step of the analysis:
+1. Setup
+2. Parameters: a form with the tabs Events, Data, Energy channels, Onsets and Views/Plots
+3. Data: creates the events, downloads (or loads) their data and groups the energy channels
+4. Background windows: checks and changes the background window of each event
+5. Onsets: determines the onsets and selects the ones used for the VDA
+6. VDA: prints the results and plots them
 
-The user should run the cell(s) of the first section and then follow the instructions inside the Notebook to properly fill the input forms. The cells of the "VDA" section can then be run without changing anything.
+The analysis code (`vda.py`, `vda_tool_configuration.py`, `vda_views.py`) can also be used without the Notebook; `vda_notebook.py` contains the Notebook interface.
 
 ### Events
 
@@ -73,16 +76,16 @@ Each event has a background window, used for the onset determination:
 - the background window of the events file, if given,
 - otherwise the default background window, in minutes after the start of the event's data (slider in the Notebook).
 
-The background window of each event can be checked and changed in the Notebook with the event dropdown and the "Background" slider, or set back to the default one. The chosen windows can be saved with `vda.save_times("path.csv")`, and the saved file can be used as the events file of later runs.
+The background window of each event can be checked and changed in the Notebook with the event dropdown and the "Background" slider, or set back to the default one. The chosen windows can be saved with `tool.vda.save_times("path.csv")`, and the saved file can be used as the events file of later runs.
 
 ### Onset selection
 
-- Use all: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used. With the Notebook checkboxes the order is sun, asun, north, south, omni; a different priority can be set with `vda.parameters.viewings`, e.g. `["north", "sun"]`.
+- Use all: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used. With the Notebook checkboxes the order is sun, asun, north, south, omni; a different priority can be set with `tool.parameters.viewings`, e.g. `["north", "sun"]`.
 - Interactive: the determined onsets are shown one channel at a time, chosen with the event and channel dropdowns or the "Previous" / "Next" buttons, and the viewing whose onset is used is selected per channel (or none, to leave the channel out). The selection starts from the viewings of "Use all".
 
 ### Results
 
-For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot, which is also saved as a .png file. The results of all the events are stored in the `vda.results` table. For many events, `vda.compute_vda()` followed by `vda.print_results()` gives the results without creating the plots.
+For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot, which can also be saved as a .png file (Views/Plots tab). The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.
 
 ### Changes from v0.2.0
 
