@@ -114,7 +114,8 @@ def test_date_ranges_start_after_end():
      ("2021-05-22 19:45", "2021-05-22 20:45"), "default"),
     ("Event No,Start Time,BG End,End Time", "1,2021-05-22 19:45,2021-05-22 20:15,2021-05-23 02:45",
      ("2021-05-22 19:45", "2021-05-22 20:15"), "input file"),
-    ("Event No, Start Time, BG Start, BG End, End Time", "1, 2021-05-22 19:45, 2021-05-22 20:00, 2021-05-22 20:30, 2021-05-23 02:45",
+    ("Event No, Start Time, BG Start, BG End, End Time",
+     "1, 2021-05-22 19:45, 2021-05-22 20:00, 2021-05-22 20:30, 2021-05-23 02:45",
      ("2021-05-22 20:00", "2021-05-22 20:30"), "input file"),
     ("Event No,Start Time,BG Start,BG End,End Time", "1,2021-05-22 19:45,,,2021-05-23 02:45",
      ("2021-05-22 19:45", "2021-05-22 20:45"), "default"),
@@ -142,7 +143,9 @@ def test_reference_times_file(tmp_path):
 
 
 def test_events_file_with_unknown_columns(tmp_path):
-    path = write_csv(tmp_path, "events.csv", "Event No,BG Start,BG End,End Time\n1,2021-05-22 19:45,2021-05-22 20:45,2021-05-23 02:45\n")
+    path = write_csv(tmp_path, "events.csv",
+                     "Event No,BG Start,BG End,End Time\n"
+                     "1,2021-05-22 19:45,2021-05-22 20:45,2021-05-23 02:45\n")
     v = make_vda(input_filepath=path)
     with pytest.raises(ValueError, match="Accepted columns"):
         v.construct_times_df()
@@ -300,7 +303,8 @@ def test_vda_fit_needs_two_points(fixed_spacecraft_distance, capsys):
 
 # ---------------------------------------------------------------- parameters
 
-@pytest.mark.parametrize("name", ["input_type", "date_range_filepath", "reference_times_filepath", "date_start", "date_end", "viewings_tt"])
+@pytest.mark.parametrize("name", ["input_type", "date_range_filepath", "reference_times_filepath",
+                                  "date_start", "date_end", "viewings_tt"])
 def test_removed_parameters(name):
     with pytest.raises(AttributeError, match="removed in v0.3.0"):
         setattr(VDA_parameters(), name, None)
