@@ -9,7 +9,6 @@ import pandas as pd
 class OnsetSelection(IntEnum):
     USE_ALL = 0
     INTERACTIVE = 1
-    CUSTOM_LIST = 2
 
 
 AVAILABLE_SENSORS_PARTICLES = {
@@ -123,6 +122,12 @@ class VDA_parameters:
             raise AttributeError(f"The {name} parameter was removed in v0.3.0. {REMOVED_PARAMETERS[name]}")
         if name not in {f.name for f in fields(self)}:
             raise AttributeError(f"VDA_parameters has no parameter '{name}'")
+        if name == "onset_selection":
+            try:
+                value = OnsetSelection(value)
+            except ValueError:
+                options = ", ".join(f"OnsetSelection.{s.name} ({s.value})" for s in OnsetSelection)
+                raise ValueError(f"Unknown onset selection {value!r}. Use one of: {options}") from None
         super().__setattr__(name, value)
 
     @property
