@@ -14,10 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import vda as vda_module
-from vda import VDA
-from vda_tool_configuration import OnsetSelection, VDA_parameters
-from vda_views import VDA_nb_displayer
+from spearhead.vda import OnsetSelection, VDA, VDA_parameters
+from spearhead.vda import analysis
 
 
 def make_vda(**parameters) -> VDA:
@@ -99,8 +97,8 @@ def test_date_ranges_without_file():
     assert v.df_times.index.name == "Event No"
     assert v.df_times.loc[2, "Start Time"] == pd.Timestamp("2021-02-01 08:00")
     # default background window: 0 to 60 minutes after the start time
-    assert v._bg_window(2) == (datetime(2021, 2, 1, 8), datetime(2021, 2, 1, 9))
-    assert v._bg_window_source(2) == "default"
+    assert v.bg_window(2) == (datetime(2021, 2, 1, 8), datetime(2021, 2, 1, 9))
+    assert v.bg_window_source(2) == "default"
 
 
 def test_date_ranges_start_after_end():
@@ -127,8 +125,8 @@ def test_datetime_ranges_file_layouts(tmp_path, header, row, expected_bg, source
     v.construct_times_df()
     assert v.df_times.loc[1, "Start Time"] == pd.Timestamp("2021-05-22 19:45")
     assert v.df_times.loc[1, "End Time"] == pd.Timestamp("2021-05-23 02:45")
-    assert v._bg_window(1) == tuple(pd.Timestamp(t).to_pydatetime() for t in expected_bg)
-    assert v._bg_window_source(1) == source
+    assert v.bg_window(1) == tuple(pd.Timestamp(t).to_pydatetime() for t in expected_bg)
+    assert v.bg_window_source(1) == source
 
 
 def test_reference_times_file(tmp_path):
@@ -163,16 +161,16 @@ def test_background_window_changes(tmp_path):
 
     v.set_default_bg_window(30, 90)
     # only the event without a window from the file changes
-    assert v._bg_window(1) == (datetime(2021, 5, 22, 20, 0), datetime(2021, 5, 22, 20, 30))
-    assert v._bg_window(2) == (datetime(2021, 11, 9, 15, 55), datetime(2021, 11, 9, 16, 55))
+    assert v.bg_window(1) == (datetime(2021, 5, 22, 20, 0), datetime(2021, 5, 22, 20, 30))
+    assert v.bg_window(2) == (datetime(2021, 11, 9, 15, 55), datetime(2021, 11, 9, 16, 55))
 
     v.set_bg_window(1, "2021-05-22 21:00", "2021-05-22 22:00")
-    assert v._bg_window(1) == (datetime(2021, 5, 22, 21, 0), datetime(2021, 5, 22, 22, 0))
-    assert v._bg_window_source(1) == "set"
+    assert v.bg_window(1) == (datetime(2021, 5, 22, 21, 0), datetime(2021, 5, 22, 22, 0))
+    assert v.bg_window_source(1) == "set"
 
     v.reset_bg_window(1)
-    assert v._bg_window(1) == (datetime(2021, 5, 22, 20, 15), datetime(2021, 5, 22, 21, 15))
-    assert v._bg_window_source(1) == "default"
+    assert v.bg_window(1) == (datetime(2021, 5, 22, 20, 15), datetime(2021, 5, 22, 21, 15))
+    assert v.bg_window_source(1) == "default"
 
     with pytest.raises(ValueError):
         v.set_bg_window(1, "2021-05-22 22:00", "2021-05-22 21:00")
@@ -182,11 +180,11 @@ def test_background_window_warnings():
     v = make_vda(date_ranges=[(datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 20))])
     v.construct_times_df()
     times = pd.date_range("2021-10-28 14:00", "2021-10-28 20:00", freq="5min")
-    assert v._bg_window_warnings(1, times) == []
+    assert v.bg_window_warnings(1, times) == []
     v.set_default_bg_window(0, 5)
-    assert any("2 data points" in w for w in v._bg_window_warnings(1, times))
+    assert any("2 data points" in w for w in v.bg_window_warnings(1, times))
     v.set_bg_window(1, "2021-10-28 19:00", "2021-10-28 21:00")
-    assert any("outside its data range" in w for w in v._bg_window_warnings(1, times))
+    assert any("outside its data range" in w for w in v.bg_window_warnings(1, times))
 
 
 def test_save_times_round_trip(tmp_path):
@@ -201,7 +199,7 @@ def test_save_times_round_trip(tmp_path):
     saved.construct_times_df()
     columns = ["Start Time", "BG Start", "BG End", "End Time"]
     pd.testing.assert_frame_equal(saved.df_times[columns], v.df_times[columns], check_dtype=False)
-    assert saved._bg_window_source(2) == "input file"
+    assert saved.bg_window_source(2) == "input file"
 
 
 # ---------------------------------------------------------------- saved data
@@ -243,7 +241,7 @@ def vda_with_onset_options(viewings):
 ])
 def test_use_all_follows_viewings_order(viewings, expected):
     v = vda_with_onset_options(viewings)
-    VDA_nb_displayer(v).select_onsets()
+    v.select_onsets()
     assert v.parameters.selected_onsets["Viewing"].tolist() == expected
 
 
@@ -276,7 +274,7 @@ def vda_with_onsets(onsets):
 
 @pytest.fixture
 def fixed_spacecraft_distance(monkeypatch):
-    monkeypatch.setattr(vda_module.spice, "get_body", lambda *args, **kwargs: FixedDistance())
+    monkeypatch.setattr(analysis.spice, "get_body", lambda *args, **kwargs: FixedDistance())
     return (FixedDistance.distance / const.c).to(u.s).value
 
 
@@ -325,6 +323,7 @@ def test_vda_fit_needs_two_points(fixed_spacecraft_distance, capsys):
     ("input_type", "v0.3.0"), ("date_range_filepath", "v0.3.0"), ("reference_times_filepath", "v0.3.0"),
     ("date_start", "v0.3.0"), ("date_end", "v0.3.0"),
     ("viewings_tt", "v0.4.0"), ("load_data", "v0.4.0"), ("save_data", "v0.4.0"),
+    ("default_channel_groups", "v0.5.0"),
 ])
 def test_removed_parameters(name, version):
     with pytest.raises(AttributeError, match=f"removed in {version}"):
@@ -351,6 +350,17 @@ def test_parameters_instances_are_independent():
     # new parameter sets do not share their lists and dictionaries
     other = VDA_parameters()
     other.date_ranges.append((datetime(2021, 1, 1), datetime(2021, 1, 2)))
-    other.channel_groups["protons"] = {}
-    assert len(p.date_ranges) == 1 and p.channel_groups == {}
+    other.channel_groups["protons"]["HET/protons Channel 1"]["channels"].append(4)
+    assert len(p.date_ranges) == 1 and p.channel_groups["protons"]["HET/protons Channel 1"]["channels"] == [1, 2, 3]
     assert VDA_parameters() == VDA_parameters()
+
+
+def test_default_channel_groups():
+    p = VDA_parameters()
+    assert list(p.channel_groups) == ["protons", "electrons"]
+    assert len(p.channel_groups["protons"]) == 8
+    assert p.channel_groups["electrons"] == {
+        "HET/electrons Channel 1": {"sensor": "het", "channels": [0, 1]},
+        "HET/electrons Channel 2": {"sensor": "het", "channels": [2, 3]},
+    }
+    assert p.sensors_particles == {"het": ["protons", "electrons"]}

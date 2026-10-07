@@ -4,19 +4,33 @@ The analysis code can be used in scripts or other notebooks:
 
 | File | Contents |
 |---|---|
-| `vda.py` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit, plots) |
-| `vda_tool_configuration.py` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
-| `vda_views.py` | `VDA_nb_displayer`: the widgets and the onset selection |
-| `vda_notebook.py` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form and analysis steps) |
+| `spearhead.vda.analysis` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit) |
+| `spearhead.vda.conf` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
+| `spearhead.vda.views` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
+| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form, analysis steps and their widgets) |
 
-The files are not an installable package yet: run the scripts from the folder of the tool, or add it to the Python path.
+`VDA`, `VDA_parameters` and `OnsetSelection` can also be imported directly from `spearhead.vda`.
+
+## Installation
+
+From the folder of the tool (see the [README](../README.md#install-locally)):
+
+```bash
+pip install -e .
+```
+
+or directly from GitHub, without the notebook:
+
+```bash
+pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA"
+```
+
+The extra `[notebook]` (e.g. `pip install -e ".[notebook]"`) also installs the notebook dependencies (Jupyter and ipywidgets), needed by `spearhead.vda.notebook`. The extra `[test]` installs the tools to run the tests (`pytest tests/`). The installed version is `spearhead.vda.__version__`.
 
 ## Example
 
 ```python
-from vda import VDA
-from vda_tool_configuration import VDA_parameters
-from vda_views import VDA_nb_displayer
+from spearhead.vda import VDA, VDA_parameters, views
 
 parameters = VDA_parameters()
 parameters.input_filepath = "examples/datetime_range_example.csv"
@@ -43,15 +57,39 @@ vda.set_bg_window(2, "2021-11-09 15:30", "2021-11-09 16:30")   # optional: backg
 vda.calculate_onsets()
 vda.clean_onsets()
 vda.construct_options_df()
-VDA_nb_displayer(vda).select_onsets()   # "Use all" onset selection
+vda.select_onsets()                     # "Use all" onset selection
 vda.construct_energy_channels_characteristics()
 vda.define_spacecraft_parameters()      # SPICE kernels for the spacecraft distance
 vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()
 print(vda.results)
+
+fig = views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
 ```
 
-`vda.plot()` instead of `vda.compute_vda()` also creates the VDA plots.
+## Plots
+
+The functions of `spearhead.vda.views` return a matplotlib figure without showing it, saved to `filename` if one is given:
+
+| Function | Plot |
+|---|---|
+| `plot_bg(vda, event_no)` | Grouped channels of the event with its background window |
+| `plot_onsets(vda, event_no, sensor, particle, prefix, channel, selected_viewing=None)` | Detected onsets of a grouped channel, one subplot per viewing |
+| `plot_vda(vda, event_no)` | VDA fit of the event (after `vda.compute_vda()`) |
+
+`vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
+
+## Widgets in another notebook
+
+`VDA_notebook` can use an existing `VDA` object, to check the background windows or select the onsets interactively in another notebook:
+
+```python
+from spearhead.vda.notebook import VDA_notebook
+
+tool = VDA_notebook(vda)
+tool.background_selection()   # after vda.group_energy_channels()
+tool.onset_selection()        # after vda.select_onsets()
+```
 
 ## Parameters
 
@@ -65,7 +103,7 @@ print(vda.results)
 | `bg_after_start` | Default background window, (start, end) in minutes after the start of the data of each event |
 | `viewings` | Viewings, in the priority order of the "Use all" onset selection |
 | `resample_frequency` | Pandas offset alias (e.g. `"5min"`), or `""` for no resampling |
-| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}` |
+| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}`. By default, 8 groups of HET protons and 2 of HET electrons |
 | `onset_method`, `onset_method_parameters` | Onset determination method (`"sigma"`) and its parameters (`s`, `n`) |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |
