@@ -13,8 +13,12 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - `channel_groups` has the default grouped channels as its default value, so they are also used without the notebook. The channel groups widget shows the groups of `channel_groups`.
 
 ### Changed
+- Wider background plot, so that its title and legend fit with large fonts.
 - The widgets of `vda_views.py` (`VDA_nb_displayer`) are part of `VDA_notebook`. `VDA_notebook(vda)` can use an existing `VDA` object, e.g. for `background_selection()` and `onset_selection()` (the interactive onset selection) in another notebook.
 - `bg_window`, `bg_window_source`, `bg_window_points`, `bg_window_warnings`, `check_bg_window`, `channel_energy_range`, `format_timedelta` and `vda_fits` of `VDA` are public (previously with a leading underscore).
+
+### Fixed
+- The notebook could stop responding (a cell never started) with ipykernel 7.0 to 7.3, mostly after the background window step. The `notebook` extra requires ipykernel 7.4 or newer on Python 3.11 and newer, and ipykernel 6 on Python 3.10.
 
 ### Removed
 - `astrospice` and `seppy` from the requirements: they are not used by the tool (`seppy` is installed by `pyonset`).
