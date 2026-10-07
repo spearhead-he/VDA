@@ -4,9 +4,10 @@ The analysis code can be used in scripts or other notebooks:
 
 | File | Contents |
 |---|---|
-| `vda.py` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit, plots) |
+| `vda.py` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit) |
 | `vda_tool_configuration.py` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
-| `vda_views.py` | `VDA_nb_displayer`: the widgets and the onset selection |
+| `vda_views.py` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
+| `vda_widgets.py` | `VDA_nb_displayer`: the widgets of the notebook |
 | `vda_notebook.py` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form and analysis steps) |
 
 The files are not an installable package yet: run the scripts from the folder of the tool, or add it to the Python path.
@@ -14,9 +15,9 @@ The files are not an installable package yet: run the scripts from the folder of
 ## Example
 
 ```python
+import vda_views
 from vda import VDA
 from vda_tool_configuration import VDA_parameters
-from vda_views import VDA_nb_displayer
 
 parameters = VDA_parameters()
 parameters.input_filepath = "examples/datetime_range_example.csv"
@@ -43,15 +44,27 @@ vda.set_bg_window(2, "2021-11-09 15:30", "2021-11-09 16:30")   # optional: backg
 vda.calculate_onsets()
 vda.clean_onsets()
 vda.construct_options_df()
-VDA_nb_displayer(vda).select_onsets()   # "Use all" onset selection
+vda.select_onsets()                     # "Use all" onset selection
 vda.construct_energy_channels_characteristics()
 vda.define_spacecraft_parameters()      # SPICE kernels for the spacecraft distance
 vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()
 print(vda.results)
+
+fig = vda_views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
 ```
 
-`vda.plot()` instead of `vda.compute_vda()` also creates the VDA plots.
+## Plots
+
+The functions of `vda_views.py` return a matplotlib figure without showing it, saved to `filename` if one is given:
+
+| Function | Plot |
+|---|---|
+| `plot_bg(vda, event_no)` | Grouped channels of the event with its background window |
+| `plot_onsets(vda, event_no, sensor, particle, prefix, channel, selected_viewing=None)` | Detected onsets of a grouped channel, one subplot per viewing |
+| `plot_vda(vda, event_no)` | VDA fit of the event (after `vda.compute_vda()`) |
+
+`vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
 
 ## Parameters
 
@@ -65,7 +78,7 @@ print(vda.results)
 | `bg_after_start` | Default background window, (start, end) in minutes after the start of the data of each event |
 | `viewings` | Viewings, in the priority order of the "Use all" onset selection |
 | `resample_frequency` | Pandas offset alias (e.g. `"5min"`), or `""` for no resampling |
-| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}` |
+| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}`. By default, 8 groups of HET protons and 2 of HET electrons |
 | `onset_method`, `onset_method_parameters` | Onset determination method (`"sigma"`) and its parameters (`s`, `n`) |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |

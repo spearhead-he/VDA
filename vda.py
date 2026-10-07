@@ -1,14 +1,22 @@
+"""Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events with Solar Orbiter EPD data.
+
+The VDA class performs the steps of the analysis:
+- events: data ranges and background windows, from an events file or datetime ranges
+- data: download (or load) of the EPD (HET, EPT) intensities, resampling and grouping of the energy channels
+- onsets: onset times of each grouped channel and viewing, and the selection of the ones used for the fit
+- VDA fit: release time and apparent path length of each event
+
+Its parameters are in vda_tool_configuration.py and its plots in vda_views.py.
+"""
 import numpy as np
 import pandas as pd
 import astropy.units as u
 import astropy.constants as const
 
-from math import ceil, sqrt
+from math import sqrt
 from os import getcwd
 from datetime import datetime, timedelta
 
-from matplotlib import pyplot as plt
-from matplotlib import dates as mdates
 from sunpy.coordinates import spice
 from sunpy.data import cache
 from solo_epd_loader import epd_load
@@ -152,7 +160,7 @@ class VDA:
         if self.parameters.view_dfs:
             return self.df_times
 
-    def _bg_window(self, index_event) -> tuple:
+    def bg_window(self, index_event) -> tuple:
         """Returns the (start, end) of the background window of the event"""
         event_times = self.df_times.loc[index_event]
         return (
@@ -182,13 +190,13 @@ class VDA:
         self._bg_sources[index_event] = "default"
         self._apply_default_bg_window(index_event)
 
-    def _bg_window_points(self, index_event, times: pd.DatetimeIndex) -> int:
-        bg_start, bg_end = self._bg_window(index_event)
+    def bg_window_points(self, index_event, times: pd.DatetimeIndex) -> int:
+        bg_start, bg_end = self.bg_window(index_event)
         return int(((times >= bg_start) & (times <= bg_end)).sum())
 
-    def _bg_window_warnings(self, index_event, times: pd.DatetimeIndex) -> list:
+    def bg_window_warnings(self, index_event, times: pd.DatetimeIndex) -> list:
         """Warnings for a background window outside the data of the event or with less than 3 points"""
-        bg_start, bg_end = self._bg_window(index_event)
+        bg_start, bg_end = self.bg_window(index_event)
         event_times = self.df_times.loc[index_event]
         warnings = []
         if bg_start < event_times[self.START_TIME_COLNAME] or bg_end > event_times[self.END_TIME_COLNAME]:
@@ -196,16 +204,16 @@ class VDA:
                 f"Warning: the background window of event {index_event} ({bg_start} to {bg_end}) is outside "
                 f"its data range ({event_times[self.START_TIME_COLNAME]} to {event_times[self.END_TIME_COLNAME]})"
             )
-        n_points = self._bg_window_points(index_event, times)
+        n_points = self.bg_window_points(index_event, times)
         if n_points < 3:
             warnings.append(f"Warning: the background window of event {index_event} has {n_points} data points")
         return warnings
 
-    def _check_bg_window(self, index_event, times: pd.DatetimeIndex) -> None:
-        for warning in self._bg_window_warnings(index_event, times):
+    def check_bg_window(self, index_event, times: pd.DatetimeIndex) -> None:
+        for warning in self.bg_window_warnings(index_event, times):
             print(warning)
 
-    def _bg_window_source(self, index_event) -> str:
+    def bg_window_source(self, index_event) -> str:
         return self._bg_sources[index_event]
 
     def set_bg_window(self, index_event, start, end) -> None:
@@ -558,8 +566,8 @@ class VDA:
         rows = []
         index = []
         for index_event, df_event in df.groupby(level=0):
-            self._check_bg_window(index_event, df_event.index.droplevel(0))
-            bg_start, bg_end = self._bg_window(index_event)
+            self.check_bg_window(index_event, df_event.index.droplevel(0))
+            bg_start, bg_end = self.bg_window(index_event)
             for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
                 df_inner = df_event[sensor][particle][viewing][particle_prefix]
                 for column_name in df_inner.columns:
@@ -633,7 +641,28 @@ class VDA:
         if self.parameters.view_dfs:
             return self.df_options
 
-    def _channel_energy_range(self, sensor, particle, particle_prefix, channel) -> tuple:
+    def select_onsets(self):
+        """Selects the viewing of the onset used for each grouped channel ("Use all").
+
+        The viewing is the first one with an onset, in the order of parameters.viewings. The interactive
+        selection starts from the same viewings.
+        """
+        temp_df = self.df_options.droplevel(level=5)
+        df_index = temp_df.index[~temp_df.index.duplicated(keep="first")]
+        self.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
+        for i, _ in self.parameters.selected_onsets.iterrows():
+            for v in self.parameters.viewings:
+                try:
+                    self.df_options.loc[i+(v,)]
+                except KeyError:
+                    continue
+                self.parameters.selected_onsets.loc[i, "Viewing"] = v
+                break
+
+        if self.parameters.view_dfs:
+            return self.parameters.selected_onsets
+
+    def channel_energy_range(self, sensor, particle, particle_prefix, channel) -> tuple:
         """Returns the (low, high) energy of a grouped channel in MeV"""
         channels = self.parameters.channel_groups[particle][channel]["channels"]
         low_energy = self.df_energies.loc[(sensor, f"{particle_prefix}_{channels[0]}"), "Low Energy"]
@@ -649,7 +678,7 @@ class VDA:
                     particle_prefix
                 ].columns
             ):
-                low_energy, high_energy = self._channel_energy_range(sensor, particle, particle_prefix, channel)
+                low_energy, high_energy = self.channel_energy_range(sensor, particle, particle_prefix, channel)
                 geo_mean = sqrt(low_energy) * sqrt(high_energy)
                 inv_beta = 1 / sqrt(
                     1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
@@ -686,7 +715,7 @@ class VDA:
         spice.initialize(kernel_files)
 
     @staticmethod
-    def _format_timedelta(td) -> str:
+    def format_timedelta(td) -> str:
         return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
 
     def print_results(self, events=None) -> None:
@@ -704,13 +733,13 @@ class VDA:
             if pd.isna(res["APL"]):
                 print("    No results (not enough onset points)\n")
                 continue
-            print(f"    Release Time : {res['Release Time']} ± {self._format_timedelta(res['Release Time Error'])}")
-            print(f"    Extra Time   : {self._format_timedelta(res['Extra Time'])}")
+            print(f"    Release Time : {res['Release Time']} ± {self.format_timedelta(res['Release Time Error'])}")
+            print(f"    Extra Time   : {self.format_timedelta(res['Extra Time'])}")
             print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
 
     def compute_vda(self):
         """Fits the VDA line of each event and stores the results in self.results"""
-        self._vda_fits = {}
+        self.vda_fits = {}
         for index_event in self.df_options.index.unique(level=0):
             vda_points = []
             # onset times are fitted in seconds from the event start
@@ -777,7 +806,7 @@ class VDA:
                 "APL": a / t_sun_to_observer,
                 "APL Error": a_error / t_sun_to_observer,
             }
-            self._vda_fits[index_event] = {
+            self.vda_fits[index_event] = {
                 "t0": t0,
                 "inv_betas": inv_betas,
                 "onset_seconds": onset_seconds,
@@ -785,194 +814,3 @@ class VDA:
                 "b": b,
                 "b_error": b_error,
             }
-
-    def plot_vda(self, savefig: bool = True, returnfig: bool = False):
-        """Prints the results and plots the VDA fit of each event computed by compute_vda.
-
-        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
-        """
-        figs = []
-        for index_event, fit in self._vda_fits.items():
-            inv_betas = fit["inv_betas"]
-            a, b, b_error = fit["a"], fit["b"], fit["b_error"]
-
-            def to_time(seconds):
-                return fit["t0"] + timedelta(seconds=seconds)
-
-            res = self.results.loc[index_event]
-            self.print_results(index_event)
-
-            fig, ax = plt.subplots(figsize=(12, 8), layout="constrained")
-            ax.scatter(
-                inv_betas,
-                [to_time(t) for t in fit["onset_seconds"]],
-                color="black",
-            )
-            ax.plot(
-                inv_betas,
-                [to_time(a * x + b) for x in inv_betas],
-                label="Linear Regression",
-                color="blue",
-            )
-            ax.fill_between(
-                inv_betas,
-                [to_time(a * x + b - 2 * b_error) for x in inv_betas],
-                [to_time(a * x + b + 2 * b_error) for x in inv_betas],
-                color="blue",
-                alpha=0.1,
-            )
-            fig.suptitle(f"Event {index_event} ({self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
-            ax.set_xlabel("Inverse Beta")
-            ax.set_ylabel("Time")
-            time_formatter = mdates.DateFormatter("%H:%M")
-            ax.yaxis.set_major_formatter(time_formatter)
-            ax.plot(
-                [],
-                [],
-                alpha=0,
-                label=f"Extra Time = {self._format_timedelta(res['Extra Time'])}",
-            )
-            ax.plot(
-                [],
-                [],
-                alpha=0,
-                label=f"Release Time = {res['Release Time']} +/- {self._format_timedelta(res['Release Time Error'])}",
-            )
-            ax.plot(
-                [],
-                [],
-                alpha=0,
-                label=f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
-            )
-            # legend between the title and the plot
-            ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=2, frameon=False)
-            if savefig:
-                # date_str = self.df_grouped.loc[index_event].index[1].to_pydatetime().strftime('%Y-%m-%d')
-                time_start_str = self.df_times.loc[index_event][self.START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
-                time_end_str = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
-                date_str = f"{time_start_str}_{time_end_str}"
-                particles_str = "_".join([f'{s}-{p}' for s, ps in self.parameters.sensors_particles.items() for p in ps])
-                freq_str = self.parameters.resample_frequency if self.parameters.resample_frequency != "" else "noresample"
-                filename = f"{date_str}_{particles_str}_{freq_str}.png"
-                plt.savefig(filename)
-            plt.show()
-            figs.append(fig)
-
-        if returnfig:
-            return figs[0] if len(figs) == 1 else figs
-
-    def plot(self, savefig: bool = True, returnfig: bool = False):
-        """Fits the VDA line of each event, stores it in self.results, prints the results and plots them.
-
-        If returnfig is True, returns the figure, or a list of figures if more than one event was plotted.
-        """
-        self.compute_vda()
-        return self.plot_vda(savefig, returnfig)
-
-    def _plot_event_bg(self, ax, event_no) -> None:
-        """Plots the grouped channels of the event with its background window"""
-        # one colormap per sensor and particle, darker for the later channels of the group
-        colormaps = ["Blues", "Oranges", "Greens", "Purples", "Reds", "Greys"]
-        linestyles = ["-", "--", ":", "-."]
-        viewings = self.parameters.viewings
-        # zeros cannot be shown in log scale
-        temp_df = self.df_grouped.loc[event_no].replace(0, np.nan)
-        for i_group, (sensor, particle, particle_prefix) in enumerate(self._iter_sensor_particles()):
-            cmap = plt.get_cmap(colormaps[i_group % len(colormaps)])
-            for i_viewing, viewing in enumerate(viewings):
-                df_channels = temp_df[sensor][particle][viewing][particle_prefix]
-                n_channels = len(df_channels.columns)
-                for i_channel, channel in enumerate(df_channels.columns):
-                    low_energy, high_energy = self._channel_energy_range(sensor, particle, particle_prefix, channel)
-                    label = f"{sensor.upper()} {particle} {low_energy:.2f}-{high_energy:.2f} MeV"
-                    if len(viewings) > 1:
-                        label += f" ({viewing})"
-                    ax.plot(
-                        df_channels[channel],
-                        color=cmap(0.4 + 0.6 * i_channel / max(n_channels - 1, 1)),
-                        linestyle=linestyles[i_viewing % len(linestyles)],
-                        label=label,
-                    )
-
-        bg_start, bg_end = self._bg_window(event_no)
-        ax.axvspan(bg_start, bg_end, color="green", alpha=0.2, label="Background")
-        bg_end_format = "%H:%M" if bg_start.date() == bg_end.date() else "%Y-%m-%d %H:%M"
-        ax.set_title(
-            f"Event {event_no}\n"
-            f"Background: {bg_start:%Y-%m-%d %H:%M} to {bg_end:{bg_end_format}} ({self._bg_window_source(event_no)})"
-        )
-
-        ax.set_yscale("log")
-        ax.set_ylabel(r"Intensity (cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
-        ax.set_xlim(temp_df.index[0], temp_df.index[-1])
-        locator = mdates.AutoDateLocator()
-        ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
-        ax.set_xlabel("Time (UTC)")
-        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize="small")
-
-    def _plot_channel_onsets(self, event_no, sensor, particle, particle_prefix, channel, selected_viewing=None):
-        """Plots the detected onsets of a grouped channel of the event, one subplot per viewing"""
-        viewings = self.parameters.viewings
-        temp_df = self.df_grouped.loc[event_no]
-        ncols = min(len(viewings), 3)
-        nrows = ceil(len(viewings) / ncols)
-        fig = plt.figure(figsize=(14, 4.5 * nrows + 1), dpi=300, layout="constrained")
-        # the last row holds the legend of all the viewings
-        grid = fig.add_gridspec(nrows + 1, ncols, height_ratios=[1] * nrows + [0.15])
-        axs_flat = [fig.add_subplot(grid[row, col]) for row in range(nrows) for col in range(ncols)]
-        ax_legend = fig.add_subplot(grid[nrows, :])
-        ax_legend.axis("off")
-        for ax in axs_flat[len(viewings):]:
-            ax.axis("off")
-        for ax, viewing in zip(axs_flat, viewings):
-            ax.set_title(f"{viewing} (selected)" if viewing == selected_viewing else viewing,
-                         fontweight="bold" if viewing == selected_viewing else "normal")
-            try:
-                onset_results = self.df_onsets_existing.loc[(event_no, sensor, particle, viewing, particle_prefix, channel)]
-            except KeyError:
-                ax.text(0.5, 0.5, "No onset", transform=ax.transAxes, ha="center", va="center")
-                continue
-
-            ax.plot(temp_df[sensor][particle][viewing][particle_prefix][channel].fillna(0).ffill(), label="Data")
-            ax.set_yscale("log")
-            ax.axvspan(onset_results["Background Start"], onset_results["Background End"],
-                       color="green", alpha=0.3, label="BG sample")
-            values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
-            # bg level and threshold are only provided by the sigma method
-            method_specific = onset_results["Method Specific"]
-            if isinstance(method_specific, dict) and "bg_level" in method_specific:
-                ax.axhline(method_specific["bg_level"], color="green", linestyle="dashed", label="BG level")
-                ax.axhline(method_specific["threshold"], color="red", linestyle="dashed", label="Threshold")
-                values += [f"BG {method_specific['bg_level']:.3g}", f"Threshold {method_specific['threshold']:.3g}"]
-            ax.axvline(onset_results["Onset Time"], color="purple", linestyle="dashed", label="Onset")
-            ax.text(0.98, 0.03, "\n".join(values), transform=ax.transAxes, ha="right", va="bottom",
-                    fontsize="x-small", bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"})
-
-            ax.set_xlim(temp_df.index[0], temp_df.index[-1])
-            locator = mdates.AutoDateLocator(maxticks=5)
-            ax.xaxis.set_major_locator(locator)
-            ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
-
-        # one legend for all the viewings, from the first subplot with an onset
-        for ax in axs_flat:
-            handles, labels = ax.get_legend_handles_labels()
-            if handles:
-                ax_legend.legend(handles, labels, loc="center", ncols=len(handles), fontsize="small", frameon=False)
-                break
-
-        low_energy, high_energy = self._channel_energy_range(sensor, particle, particle_prefix, channel)
-        fig.suptitle(
-            f"Detected onsets for event {event_no} ({temp_df.index[0]:%Y-%m-%d}) | "
-            f"{sensor}/{particle} ({low_energy:.2f}-{high_energy:.2f} MeV)"
-        )
-        return fig
-
-    def plot_bg_selection(self):
-        """Plots the grouped channels of each event with its background window"""
-        for event_no in self.df_grouped.index.unique(level=0):
-            self._check_bg_window(event_no, self.df_grouped.loc[event_no].index)
-            fig, ax = plt.subplots(figsize=(12, 6))
-            self._plot_event_bg(ax, event_no)
-            fig.tight_layout()
-            plt.show()

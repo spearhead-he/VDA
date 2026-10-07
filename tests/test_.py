@@ -9,7 +9,7 @@ from astropy.visualization import quantity_support
 
 from tests.helpers import strip_figure_text
 from vda_tool_configuration import VDA_parameters
-from vda_views import VDA_nb_displayer
+import vda_views
 from vda import VDA
 
 # omit Pandas' PerformanceWarning
@@ -37,33 +37,17 @@ _image_compare = pytest.mark.mpl_image_compare(remove_text=True, deterministic=T
 def test_vda_default():
     vda_parameters = VDA_parameters()
     vda = VDA(vda_parameters)
-    vda_displayer = VDA_nb_displayer(vda)
 
-    # not needed
-    vda_displayer.display_view_toggle()
-    vda_displayer.display_date_range()
-
-    # construct times
     vda.construct_times_df()
 
-    # not needed
-    vda_displayer.display_load_data_option()
-
-    # load data
-    vda_displayer.construct_energies_df()
-
-    # particle selection (not needed)
-    vda_displayer.display_particle_selection()
+    vda.construct_energies_df()
 
     vda.construct_particles_df()
 
     vda.group_energy_channels()
 
-    vda_displayer.display_onset_method_selection()
-
-    vda_displayer.display_onset_method_parameters()
-
-    vda.plot_bg_selection()
+    for event_no in vda.df_grouped.index.unique(level=0):
+        vda_views.plot_bg(vda, event_no)
 
     vda.calculate_onsets()
 
@@ -71,11 +55,7 @@ def test_vda_default():
 
     vda.construct_options_df()
 
-    vda_displayer.display_onset_selection_selection()
-
-    vda_displayer.select_onsets()
-
-    vda.parameters.selected_onsets
+    vda.select_onsets()
 
     vda.construct_energy_channels_characteristics()
 
@@ -83,7 +63,9 @@ def test_vda_default():
 
     vda.define_spacecraft_parameters()
 
-    fig = vda.plot(savefig=False, returnfig=True)
+    vda.compute_vda()
+
+    fig = vda_views.plot_vda(vda, 1)
 
     # check legend contents manually
     handles, labels = fig.axes[0].get_legend_handles_labels()

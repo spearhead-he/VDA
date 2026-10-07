@@ -1,6 +1,7 @@
 """Notebook interface of the VDA tool: the parameters form and the steps of the analysis.
 
-The analysis itself is in vda.py, its parameters in vda_tool_configuration.py and the widgets in vda_views.py.
+The analysis itself is in vda.py, its parameters in vda_tool_configuration.py, the plots in vda_views.py
+and the widgets in vda_widgets.py.
 """
 import html
 import os
@@ -12,9 +13,10 @@ from matplotlib import pyplot as plt
 from pandas.errors import PerformanceWarning
 from sunpy import log as sunpy_log
 
+import vda_views
 from vda import VDA
 from vda_tool_configuration import OnsetSelection, VDA_parameters
-from vda_views import VDA_nb_displayer
+from vda_widgets import VDA_nb_displayer, show_figure
 
 
 class VDA_notebook:
@@ -197,9 +199,9 @@ class VDA_notebook:
         self.vda.clean_onsets()
         self.vda.construct_options_df()
         self._show(self.vda.df_onsets_existing)
-        selection = self.displayer.select_onsets()
+        self.vda.select_onsets()
         if self.parameters.onset_selection == OnsetSelection.INTERACTIVE:
-            return selection
+            return self.displayer.display_onset_selection()
 
     def run_vda(self):
         """Fits the VDA line of each event, prints the results and plots them"""
@@ -211,5 +213,9 @@ class VDA_notebook:
             self.vda.define_spacecraft_parameters()
         finally:
             sunpy_log.setLevel(sunpy_level)
-        self.vda.plot(savefig=self.save_plots)
+        self.vda.compute_vda()
+        for event_no in self.vda.vda_fits:
+            self.vda.print_results(event_no)
+            filename = vda_views.vda_plot_filename(self.vda, event_no) if self.save_plots else None
+            show_figure(vda_views.plot_vda(self.vda, event_no, filename))
         self._show(self.vda.results)

@@ -1,3 +1,9 @@
+"""Parameters of the VDA analysis.
+
+VDA_parameters holds all the parameters (events, data, energy channels, onset method and selection), with
+their defaults and the available options. Setting an unknown or removed parameter raises an error.
+OnsetSelection is the onset selection method.
+"""
 from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import IntEnum
@@ -59,7 +65,46 @@ REMOVED_PARAMETERS = {
     "viewings_tt": ("v0.4.0", 'Set viewings to a list of viewing names, e.g. ["sun", "north"].'),
     "load_data": ("v0.4.0", "Set load_data_filepath to the saved data file, or leave it empty to download the data."),
     "save_data": ("v0.4.0", "Set save_data_filepath to the file to save the data to, or leave it empty to not save them."),
+    "default_channel_groups": ("v0.5.0", "The default grouped channels are the default value of channel_groups."),
 }
+
+
+# Default grouped channels of each particle and sensor
+DEFAULT_CHANNEL_GROUPS = {
+    "protons": {
+        "het": [
+            [1, 2, 3],
+            [10, 11, 12],
+            [13, 14, 15],
+            [16, 17, 18],
+            [19, 20, 21],
+            [22, 23, 24],
+            [25, 26, 27],
+            [28, 29, 30, 31],
+        ],
+    },
+    "electrons": {
+        "het": [
+            [0, 1],
+            [2, 3],
+        ],
+    },
+}
+
+
+def channel_group_label(sensor: str, particle: str, number: int) -> str:
+    return f"{sensor.upper()}/{particle} Channel {number}"
+
+
+def _default_channel_groups() -> dict:
+    return {
+        particle: {
+            channel_group_label(sensor, particle, number): {"sensor": sensor, "channels": list(channels)}
+            for sensor, groups in sensors.items()
+            for number, channels in enumerate(groups, start=1)
+        }
+        for particle, sensors in DEFAULT_CHANNEL_GROUPS.items()
+    }
 
 
 def _default_onset_method_parameters(method: str) -> dict:
@@ -84,27 +129,8 @@ class VDA_parameters:
     # Selected viewings. Their order is the priority of the "Use all" onset selection
     viewings: list = field(default_factory=lambda: ["sun"])
     resample_frequency: str = "5min"
-    default_channel_groups: dict = field(default_factory=lambda: {
-        "protons": {
-            "HET": [
-                [1, 2, 3],
-                [10, 11, 12],
-                [13, 14, 15],
-                [16, 17, 18],
-                [19, 20, 21],
-                [22, 23, 24],
-                [25, 26, 27],
-                [28, 29, 30, 31]
-            ]
-        },
-        "electrons": {
-            "HET": [
-                [0, 1],
-                [2, 3]
-            ]
-        }
-    })
-    channel_groups: dict = field(default_factory=dict)
+    # Grouped energy channels of each particle: {label: {"sensor": "het" or "ept", "channels": [...]}}
+    channel_groups: dict = field(default_factory=_default_channel_groups)
     onset_method: str = next(iter(AVAILABLE_ONSET_METHODS))
     onset_method_parameters: dict = field(
         default_factory=lambda: _default_onset_method_parameters(next(iter(AVAILABLE_ONSET_METHODS)))

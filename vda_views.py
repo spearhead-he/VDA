@@ -1,566 +1,181 @@
-import html
-import pandas as pd
-from IPython.display import clear_output, display
-from ipywidgets import widgets
+"""Plots of the VDA analysis: background window, detected onsets and VDA fit of an event.
+
+The functions return matplotlib (pyplot) figures without showing them, so they can be used in scripts, notebooks
+or widgets. The figures are saved only when a filename is given, and can be closed with plt.close(fig) when they
+are no longer needed.
+"""
+from datetime import timedelta
+from math import ceil
+
+import matplotlib
+import numpy as np
+from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
 
-from vda_tool_configuration import OnsetSelection
+
+def _time_axis(ax, times, maxticks=None) -> None:
+    """Concise datetime ticks for the data range of the event"""
+    ax.set_xlim(times[0], times[-1])
+    locator = mdates.AutoDateLocator() if maxticks is None else mdates.AutoDateLocator(maxticks=maxticks)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
 
-class VDA_nb_displayer:
+def plot_bg(vda, event_no, filename=None) -> Figure:
+    """Plots the grouped channels of the event with its background window"""
+    fig = plt.figure(figsize=(12, 6), layout="constrained")
+    ax = fig.add_subplot()
+    # one colormap per sensor and particle, darker for the later channels of the group
+    colormaps = ["Blues", "Oranges", "Greens", "Purples", "Reds", "Greys"]
+    linestyles = ["-", "--", ":", "-."]
+    viewings = vda.parameters.viewings
+    # zeros cannot be shown in log scale
+    temp_df = vda.df_grouped.loc[event_no].replace(0, np.nan)
+    for i_group, (sensor, particle, particle_prefix) in enumerate(vda._iter_sensor_particles()):
+        cmap = matplotlib.colormaps[colormaps[i_group % len(colormaps)]]
+        for i_viewing, viewing in enumerate(viewings):
+            df_channels = temp_df[sensor][particle][viewing][particle_prefix]
+            n_channels = len(df_channels.columns)
+            for i_channel, channel in enumerate(df_channels.columns):
+                low_energy, high_energy = vda.channel_energy_range(sensor, particle, particle_prefix, channel)
+                label = f"{sensor.upper()} {particle} {low_energy:.2f}-{high_energy:.2f} MeV"
+                if len(viewings) > 1:
+                    label += f" ({viewing})"
+                ax.plot(
+                    df_channels[channel],
+                    color=cmap(0.4 + 0.6 * i_channel / max(n_channels - 1, 1)),
+                    linestyle=linestyles[i_viewing % len(linestyles)],
+                    label=label,
+                )
 
-    def __init__(self, vda_obj):
-        ############### Widgets ###############
-        self.WIDGETS_LAYOUT = widgets.Layout(width="auto")
-        self.WIDGETS_STYLE = {"description_width": "initial"}
+    bg_start, bg_end = vda.bg_window(event_no)
+    ax.axvspan(bg_start, bg_end, color="green", alpha=0.2, label="Background")
+    bg_end_format = "%H:%M" if bg_start.date() == bg_end.date() else "%Y-%m-%d %H:%M"
+    ax.set_title(
+        f"Event {event_no}\n"
+        f"Background: {bg_start:%Y-%m-%d %H:%M} to {bg_end:{bg_end_format}} ({vda.bg_window_source(event_no)})"
+    )
 
-        self.vda = vda_obj
+    ax.set_yscale("log")
+    ax.set_ylabel(r"Intensity (cm$^{-2}$ s$^{-1}$ sr$^{-1}$ MeV$^{-1}$)")
+    _time_axis(ax, temp_df.index)
+    ax.set_xlabel("Time (UTC)")
+    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1), fontsize="small")
+    if filename:
+        fig.savefig(filename)
+    return fig
 
-    def _bind(self, widget, parameter):
-        """Sets the parameter to the value of the widget when it changes"""
-        widget.observe(lambda traitlet: setattr(self.vda.parameters, parameter, traitlet["new"]), names="value")
 
-    def display_input_file(self):
-        w = widgets.Text(
-            value=self.vda.parameters.input_filepath,
-            placeholder="Path to .csv - Leave blank to use the datetime range below",
-            description="Events file:",
-            continuous_update=False,
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        self._bind(w, "input_filepath")
-        return w
-
-    def display_date_range(self):
-        """Displays the inputs of the data range, depending on the events file"""
-        filepath = self.vda.parameters.input_filepath
-        if not filepath:
-            return self.display_date_ranges()
-
+def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selected_viewing=None, filename=None) -> Figure:
+    """Plots the detected onsets of a grouped channel of the event, one subplot per viewing"""
+    viewings = vda.parameters.viewings
+    temp_df = vda.df_grouped.loc[event_no]
+    ncols = min(len(viewings), 3)
+    nrows = ceil(len(viewings) / ncols)
+    fig = plt.figure(figsize=(14, 4.5 * nrows + 1), dpi=300, layout="constrained")
+    # the last row holds the legend of all the viewings
+    grid = fig.add_gridspec(nrows + 1, ncols, height_ratios=[1] * nrows + [0.15])
+    axs_flat = [fig.add_subplot(grid[row, col]) for row in range(nrows) for col in range(ncols)]
+    ax_legend = fig.add_subplot(grid[nrows, :])
+    ax_legend.axis("off")
+    for ax in axs_flat[len(viewings):]:
+        ax.axis("off")
+    for ax, viewing in zip(axs_flat, viewings):
+        ax.set_title(f"{viewing} (selected)" if viewing == selected_viewing else viewing,
+                     fontweight="bold" if viewing == selected_viewing else "normal")
         try:
-            file_type = self.vda.times_file_type(filepath)
-        except (OSError, ValueError) as e:
-            return widgets.HTML(value=f"<pre>{html.escape(str(e))}</pre>")
+            onset_results = vda.df_onsets_existing.loc[(event_no, sensor, particle, viewing, particle_prefix, channel)]
+        except KeyError:
+            ax.text(0.5, 0.5, "No onset", transform=ax.transAxes, ha="center", va="center")
+            continue
 
-        if file_type == "reference times":
-            return self.display_reference_hours()
+        ax.plot(temp_df[sensor][particle][viewing][particle_prefix][channel].fillna(0).ffill(), label="Data")
+        ax.set_yscale("log")
+        ax.axvspan(onset_results["Background Start"], onset_results["Background End"],
+                   color="green", alpha=0.3, label="BG sample")
+        values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
+        # bg level and threshold are only provided by the sigma method
+        method_specific = onset_results["Method Specific"]
+        if isinstance(method_specific, dict) and "bg_level" in method_specific:
+            ax.axhline(method_specific["bg_level"], color="green", linestyle="dashed", label="BG level")
+            ax.axhline(method_specific["threshold"], color="red", linestyle="dashed", label="Threshold")
+            values += [f"BG {method_specific['bg_level']:.3g}", f"Threshold {method_specific['threshold']:.3g}"]
+        ax.axvline(onset_results["Onset Time"], color="purple", linestyle="dashed", label="Onset")
+        ax.text(0.98, 0.03, "\n".join(values), transform=ax.transAxes, ha="right", va="bottom",
+                fontsize="x-small", bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"})
+        _time_axis(ax, temp_df.index, maxticks=5)
 
-        df = self.vda._read_times_file(filepath)
-        with_bg = df[self.vda.BG_END_TIME_COLNAME].notna().sum()
-        return widgets.Label(
-            value=f"Datetime ranges from the events file: {len(df)} events, {with_bg} with a background window"
-        )
+    # one legend for all the viewings, from the first subplot with an onset
+    for ax in axs_flat:
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax_legend.legend(handles, labels, loc="center", ncols=len(handles), fontsize="small", frameon=False)
+            break
 
-    def display_reference_hours(self):
-        """Hours prior to and after the reference time, for files with reference times"""
-        wgt_tw_prior = widgets.IntSlider(
-            value=self.vda.parameters.bg_hours_prior,
-            min=0,
-            max=12,
-            step=1,
-            description="Hours prior to the reference time:",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        self._bind(wgt_tw_prior, "bg_hours_prior")
-        wgt_tw_after = widgets.IntSlider(
-            value=self.vda.parameters.bg_hours_after,
-            min=0,
-            max=12,
-            step=1,
-            description="Hours after the reference time:",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        self._bind(wgt_tw_after, "bg_hours_after")
-        return widgets.VBox([wgt_tw_prior, wgt_tw_after])
+    low_energy, high_energy = vda.channel_energy_range(sensor, particle, particle_prefix, channel)
+    fig.suptitle(
+        f"Detected onsets for event {event_no} ({temp_df.index[0]:%Y-%m-%d}) | "
+        f"{sensor}/{particle} ({low_energy:.2f}-{high_energy:.2f} MeV)"
+    )
+    if filename:
+        fig.savefig(filename)
+    return fig
 
-    def display_date_ranges(self):
-        """One row with the datetime range of each event, and a button to add events"""
-        date_ranges = self.vda.parameters.date_ranges
-        wrapper_rows = widgets.VBox()
 
-        def set_range_value(i, j, value):
-            date_range = list(date_ranges[i])
-            date_range[j] = value
-            date_ranges[i] = tuple(date_range)
+def vda_plot_filename(vda, event_no) -> str:
+    """Default filename of the VDA plot of the event: data range, sensors and particles, resample frequency"""
+    event_times = vda.df_times.loc[event_no]
+    time_start_str = event_times[vda.START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
+    time_end_str = event_times[vda.END_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
+    particles_str = "_".join([f"{s}-{p}" for s, ps in vda.parameters.sensors_particles.items() for p in ps])
+    freq_str = vda.parameters.resample_frequency if vda.parameters.resample_frequency != "" else "noresample"
+    return f"{time_start_str}_{time_end_str}_{particles_str}_{freq_str}.png"
 
-        def remove_event(i):
-            del date_ranges[i]
-            show_rows()
 
-        def add_event(_):
-            date_ranges.append(date_ranges[-1])
-            show_rows()
+def plot_vda(vda, event_no, filename=None) -> Figure:
+    """Plots the VDA fit of the event, computed by vda.compute_vda()"""
+    fit = vda.vda_fits[event_no]
+    inv_betas = fit["inv_betas"]
+    a, b, b_error = fit["a"], fit["b"], fit["b_error"]
 
-        def show_rows():
-            rows = []
-            for i, (start, end) in enumerate(date_ranges):
-                wgt_start = widgets.widget_datetime.NaiveDatetimePicker(
-                    value=start,
-                    description=f"Event {i + 1} start:",
-                    disabled=False,
-                    style=self.WIDGETS_STYLE,
-                    layout=self.WIDGETS_LAYOUT,
-                )
-                wgt_start.observe(lambda traitlet, i=i: set_range_value(i, 0, traitlet["new"]), names="value")
-                wgt_end = widgets.widget_datetime.NaiveDatetimePicker(
-                    value=end,
-                    description="end:",
-                    disabled=False,
-                    style=self.WIDGETS_STYLE,
-                    layout=self.WIDGETS_LAYOUT,
-                )
-                wgt_end.observe(lambda traitlet, i=i: set_range_value(i, 1, traitlet["new"]), names="value")
-                btn_remove = widgets.Button(
-                    description="Remove Event",
-                    tooltip=f"Remove event {i + 1}",
-                    disabled=len(date_ranges) == 1,
-                )
-                btn_remove.on_click(lambda _, i=i: remove_event(i))
-                rows.append(widgets.HBox([wgt_start, wgt_end, btn_remove]))
-            wrapper_rows.children = rows
+    def to_time(seconds):
+        return fit["t0"] + timedelta(seconds=seconds)
 
-        btn_add = widgets.Button(description="Add Event")
-        btn_add.on_click(add_event)
-        show_rows()
-        return widgets.VBox([wrapper_rows, btn_add])
-
-    def display_load_data_option(self):
-        w = widgets.Text(
-            value=self.vda.parameters.load_data_filepath,
-            placeholder="Path to .pkl - Leave blank to download the data",
-            description="Load the data from:",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        self._bind(w, "load_data_filepath")
-        return w
-
-    def display_save_data_option(self):
-        w = widgets.Text(
-            value=self.vda.parameters.save_data_filepath,
-            placeholder="Path to .pkl - Leave blank to not save the data",
-            description="Save the data to:",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        self._bind(w, "save_data_filepath")
-        return w
-
-    def construct_energies_df(self):
-        self.vda.construct_energies_df()
-        with pd.option_context("display.max_rows", None):
-            display(self.vda.df_energies)
-
-    def display_particle_selection(self):
-        """Channel groups, viewings and resample frequency"""
-        return widgets.VBox([
-            self.display_channel_groups(),
-            self.display_viewings(),
-            self.display_resample_frequency(),
-        ])
-
-    def _channel_options(self, sensor, species):
-        """Channel numbers with their energy range, if the energies table is available"""
-        channels = self.vda.parameters.AVAILABLE_CHANNELS[sensor][species]
-        df_energies = getattr(self.vda, "df_energies", None)
-        if df_energies is None:
-            return channels
-        particle_prefix = self.vda.PARTICLE_COLUMN_PREFIX[species]
-        options = []
-        for c in channels:
-            energies = df_energies.loc[(sensor, f"{particle_prefix}_{c}")]
-            options.append((f"{c}: {energies['Low Energy']:.3g}-{energies['High Energy']:.3g} MeV", c))
-        return options
-
-    def display_channel_groups(self):
-        """Channel groups, with buttons to add and remove them"""
-        out_options = widgets.Output()
-        wrapper_channels = widgets.HBox()
-        num_channels = {}
-
-        def close_options():
-            out_options.clear_output(wait=False)
-
-        def remove_channel(species, label, wgt_channel):
-            channel_groups = self.vda.parameters.channel_groups
-            del channel_groups[species][label]
-            if len(channel_groups[species]) == 0:
-                del channel_groups[species]
-            wrapper_channels.children = tuple(c for c in wrapper_channels.children if c is not wgt_channel)
-            wgt_channel.close()
-
-        def set_channels(species, label, channels):
-            self.vda.parameters.channel_groups[species][label]["channels"] = list(channels)
-
-        def add_channel(btn, selected=None):
-            if type(btn) == str:
-                channel = btn
-            else:
-                channel = btn.description
-            try:
-                num_channels[channel] += 1
-            except KeyError:
-                num_channels[channel] = 1
-            
-            sensor, species = tuple([x.strip().lower() for x in channel.split("/")])
-            label = f"{channel} Channel {num_channels[channel]}"
-
-            value = [] if selected is None else list(selected)
-            self.vda.parameters.channel_groups.setdefault(species, {})[label] = {"sensor": sensor, "channels": value}
-
-            wgt_html = widgets.HTML(value=f"<style>p{{word-wrap: break-word; margin: 0px; text-align: center;}}</style> <p>{label}</p>")
-
-            btn_remove = widgets.Button(description="Remove Channel", tooltip=f"Remove {label}")
-
-            options = self._channel_options(sensor, species)
-            wgt_select = widgets.SelectMultiple(options=options,
-                                                value=value,
-                                                description="",
-                                                layout={
-                                                    "min_width": "max-content",
-                                                    "height": f"{2.2*len(options) + 2}ch",
-                                                    "max_height": "300px"
-                                                },
-                                                style={"description_width": "0px"})
-            wgt_select.observe(lambda traitlet: set_channels(species, label, traitlet["new"]), names="value")
-
-            wgt_channel = widgets.VBox([wgt_html, btn_remove, wgt_select], layout={"border": "solid 1px"})
-            btn_remove.on_click(lambda _: remove_channel(species, label, wgt_channel))
-            wrapper_channels.children += (wgt_channel,)
-            close_options()
-        
-        @out_options.capture(clear_output=True, wait=True)
-        def show_options():
-            labels = ["HET/protons", "HET/electrons", "EPT/protons", "EPT/electrons"]
-            buttons = [widgets.Button(description=label) for label in labels]
-            for button in buttons:
-                button.on_click(add_channel)
-            display(widgets.HBox(buttons))
-
-        for species in self.vda.parameters.default_channel_groups.keys():
-            for sensor, selections in self.vda.parameters.default_channel_groups[species].items():
-                for selection in selections:
-                    add_channel(f"{sensor}/{species}", selection)
-
-        btn_choose = widgets.Button(description="Add Channel")
-        btn_choose.on_click(lambda _: show_options())
-        wrapper_btns = widgets.HBox([btn_choose, out_options])
-        return widgets.VBox([wrapper_btns, wrapper_channels])
-
-    def display_viewings(self):
-        list_wgt_chk_viewings = []
-        for viewing in self.vda.parameters.AVAILABLE_VIEWINGS:
-            w = widgets.Checkbox(value=viewing in self.vda.parameters.viewings, 
-                                 description=viewing, 
-                                 disabled=False, 
-                                 indent=False,
-                                 layout=widgets.Layout(width="auto"))
-            w.observe(lambda traitlet, viewing=viewing: self._select_viewing(viewing, traitlet["new"]),
-                      names="value")
-            list_wgt_chk_viewings.append(w)
-        return widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})] + list_wgt_chk_viewings)
-
-    def display_resample_frequency(self):
-        wgt_resample_freq = widgets.Text(value=self.vda.parameters.resample_frequency,
-                                         placeholder="Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling",
-                                         description="Resample frequency:",
-                                         disabled=False,
-                                         style=self.WIDGETS_STYLE,
-                                         layout=self.WIDGETS_LAYOUT)
-        self._bind(wgt_resample_freq, "resample_frequency")
-        return wgt_resample_freq
-
-    def _select_viewing(self, viewing, selected):
-        """Adds or removes a viewing. The checkboxes keep the order of AVAILABLE_VIEWINGS"""
-        self.vda.parameters.viewings = [
-            v for v in self.vda.parameters.AVAILABLE_VIEWINGS
-            if (v == viewing and selected) or (v != viewing and v in self.vda.parameters.viewings)
-        ]
-
-    def display_onset_method_selection(self):
-        w = widgets.Dropdown(options=list(self.vda.parameters.AVAILABLE_ONSET_METHODS.keys()), 
-                             value=self.vda.parameters.onset_method, 
-                             description="Onset determination method:", 
-                             disabled=False, 
-                             style=self.WIDGETS_STYLE)
-        self._bind(w, "onset_method")
-        return w
-
-    def display_onset_method_parameters(self):
-        list_param_widgets = []
-        for parameter, pinfo in self.vda.parameters.AVAILABLE_ONSET_METHODS[
-            self.vda.parameters.onset_method
-        ].items():
-            widget_type = None
-            widget_params = {}
-            widget_params["disabled"] = False
-            widget_params["style"] = self.WIDGETS_STYLE
-            widget_params["layout"] = self.WIDGETS_LAYOUT
-            if pinfo["type"] == int:
-                widget_type = widgets.IntSlider
-                widget_params["value"] = pinfo["default"]
-                widget_params["min"] = pinfo["min"]
-                widget_params["max"] = pinfo["max"]
-                widget_params["step"] = 1
-                widget_params["description"] = f'{parameter} | {pinfo["description"]}'
-            elif pinfo["type"] == str:
-                widget_type = widgets.Text
-                widget_params["value"] = pinfo["default"]
-                widget_params["placeholder"] = pinfo["placeholder"]
-                widget_params["description"] = f'{parameter} | {pinfo["description"]}'
-
-            w = widget_type(**widget_params)
-
-            def set_value(traitlet, parameter=parameter):
-                self.vda.parameters.onset_method_parameters[parameter] = traitlet["new"]
-
-            w.observe(set_value, names="value")
-
-            list_param_widgets.append(w)
-
-        return widgets.VBox(list_param_widgets)
-
-    def display_bg_defaults(self):
-        try:
-            step = max(1, int(pd.Timedelta(self.vda.parameters.resample_frequency).total_seconds() // 60))
-        except ValueError:
-            step = 1
-        df_times = getattr(self.vda, "df_times", None)
-        if df_times is None:
-            # before the events are created: up to one day
-            longest_event = 24 * 60
-        else:
-            durations = df_times[self.vda.END_TIME_COLNAME] - df_times[self.vda.START_TIME_COLNAME]
-            longest_event = int(durations.max().total_seconds() // 60)
-        w = widgets.IntRangeSlider(
-            value=self.vda.parameters.bg_after_start,
-            min=0,
-            max=max(longest_event, max(self.vda.parameters.bg_after_start)),
-            step=step,
-            description="Default background (minutes after the start time):",
-            disabled=False,
-            style=self.WIDGETS_STYLE,
-            layout=self.WIDGETS_LAYOUT,
-        )
-        w.observe(
-            lambda traitlet: self.vda.set_default_bg_window(*traitlet["new"]),
-            names="value",
-        )
-        return w
-
-    def display_bg_selection(self):
-        """Plot of the selected event with a slider to choose its background window"""
-        vda = self.vda
-        out_plot = widgets.Output()
-        wgt_status = widgets.HTML()
-        wgt_event = widgets.Dropdown(
-            options=[
-                (f"Event {event_no} ({vda.df_times.loc[event_no, vda.START_TIME_COLNAME]:%Y-%m-%d %H:%M})", event_no)
-                for event_no in vda.df_grouped.index.unique(level=0)
-            ],
-            description="Event:",
-            style=self.WIDGETS_STYLE,
-        )
-        wgt_bg = widgets.SelectionRangeSlider(
-            options=[("", None)],
-            description="Background:",
-            continuous_update=False,
-            style=self.WIDGETS_STYLE,
-            layout=widgets.Layout(width="95%"),
-        )
-        btn_reset = widgets.Button(description="Reset to default", tooltip="Use the default background window for this event")
-        # the slider is not applied to the event while it is set to the event's window
-        updating = {"slider": False}
-
-        def redraw():
-            event_no = wgt_event.value
-            times = vda.df_grouped.loc[event_no].index
-            bg_start, bg_end = vda._bg_window(event_no)
-            status = (
-                f"Background {bg_start:%Y-%m-%d %H:%M} to {bg_end:%Y-%m-%d %H:%M} "
-                f"({vda._bg_window_source(event_no)}), {vda._bg_window_points(event_no, times)} points"
-            )
-            warnings = vda._bg_window_warnings(event_no, times)
-            wgt_status.value = "<br>".join([html.escape(status)] + [f"<b>{html.escape(w)}</b>" for w in warnings])
-            with out_plot:
-                clear_output(wait=True)
-                fig, ax = plt.subplots(figsize=(12, 6))
-                vda._plot_event_bg(ax, event_no)
-                fig.tight_layout()
-                plt.show()
-                plt.close(fig)
-
-        def show_event(_=None):
-            event_no = wgt_event.value
-            times = vda.df_grouped.loc[event_no].index
-            bg_start, bg_end = vda._bg_window(event_no)
-            # the data points closest to the event's window, inside it
-            i_start = min(int(times.searchsorted(bg_start)), len(times) - 1)
-            i_end = max(int(times.searchsorted(bg_end, side="right")) - 1, i_start)
-            updating["slider"] = True
-            wgt_bg.options = [(f"{t:%Y-%m-%d %H:%M}", t) for t in times]
-            wgt_bg.index = (i_start, i_end)
-            updating["slider"] = False
-            redraw()
-
-        def set_bg(traitlet):
-            if updating["slider"]:
-                return
-            bg_start, bg_end = traitlet["new"]
-            if bg_start >= bg_end:
-                wgt_status.value = "<b>The background start must be before its end</b>"
-                return
-            vda.set_bg_window(wgt_event.value, bg_start, bg_end)
-            redraw()
-
-        def reset_bg(_):
-            vda.reset_bg_window(wgt_event.value)
-            show_event()
-
-        wgt_event.observe(show_event, names="value")
-        wgt_bg.observe(set_bg, names="value")
-        btn_reset.on_click(reset_bg)
-        show_event()
-        return widgets.VBox([widgets.HBox([wgt_event, btn_reset]), wgt_bg, wgt_status, out_plot])
-
-    def display_onset_selection_selection(self):
-        w = widgets.Dropdown(options=[("Use all", OnsetSelection.USE_ALL),
-                                      ("Interactive", OnsetSelection.INTERACTIVE)], 
-                             value=self.vda.parameters.onset_selection, 
-                             description="Onset selection method:", 
-                             disabled=False, 
-                             style=self.WIDGETS_STYLE)
-        self._bind(w, "onset_selection")
-        return w
-
-    def _display_onset_selection(self):
-        """Plot of the detected onsets of one channel with the selection of its viewing.
-
-        The channels with onsets are selected with the event and channel dropdowns or the previous / next buttons.
-        """
-        vda = self.vda
-        selected_onsets = vda.parameters.selected_onsets
-        # (event, sensor, particle, prefix, channel) of the channels with onsets
-        keys = list(selected_onsets.index)
-        out_plot = widgets.Output()
-        wgt_status = widgets.HTML()
-
-        def channel_label(key):
-            _, sensor, particle, particle_prefix, channel = key
-            low_energy, high_energy = vda._channel_energy_range(sensor, particle, particle_prefix, channel)
-            return f"{sensor.upper()} {particle} {low_energy:.2f}-{high_energy:.2f} MeV"
-
-        events = list(dict.fromkeys(key[0] for key in keys))
-        wgt_event = widgets.Dropdown(
-            options=[(f"Event {event_no} ({vda.df_times.loc[event_no, vda.START_TIME_COLNAME]:%Y-%m-%d %H:%M})", event_no) for event_no in events],
-            description="Event:",
-            style=self.WIDGETS_STYLE,
-        )
-        wgt_channel = widgets.Dropdown(description="Channel:", style=self.WIDGETS_STYLE)
-        wgt_viewing = widgets.Dropdown(description="Selected viewing:", style=self.WIDGETS_STYLE)
-        btn_previous = widgets.Button(description="◀ Previous")
-        btn_next = widgets.Button(description="Next ▶")
-        # changes made by the widget itself are not applied as user selections
-        updating = {"flag": False}
-
-        def current_key():
-            return wgt_channel.value
-
-        def update_status():
-            key = current_key()
-            event_keys = [k for k in keys if k[0] == key[0]]
-            n_selected = sum(selected_onsets.loc[k, "Viewing"] is not None for k in event_keys)
-            wgt_status.value = (
-                f"Event {key[0]}: {n_selected} of {len(event_keys)} channels with a selected viewing"
-                f" | channel {keys.index(key) + 1} of {len(keys)}"
-            )
-            btn_previous.disabled = keys.index(key) == 0
-            btn_next.disabled = keys.index(key) == len(keys) - 1
-
-        def redraw():
-            key = current_key()
-            with out_plot:
-                clear_output(wait=True)
-                fig = vda._plot_channel_onsets(*key, selected_viewing=selected_onsets.loc[key, "Viewing"])
-                plt.show()
-                plt.close(fig)
-
-        def show_key(key):
-            updating["flag"] = True
-            wgt_event.value = key[0]
-            wgt_channel.options = [(channel_label(k), k) for k in keys if k[0] == key[0]]
-            wgt_channel.value = key
-            viewings_with_onsets = [v for v in vda.parameters.viewings if v in vda.df_options.loc[key].index]
-            wgt_viewing.options = [("None", None)] + [(v, v) for v in viewings_with_onsets]
-            wgt_viewing.value = selected_onsets.loc[key, "Viewing"]
-            updating["flag"] = False
-            update_status()
-            redraw()
-
-        def on_event(traitlet):
-            if not updating["flag"]:
-                show_key(next(k for k in keys if k[0] == traitlet["new"]))
-
-        def on_channel(traitlet):
-            if not updating["flag"] and traitlet["new"] is not None:
-                show_key(traitlet["new"])
-
-        def on_viewing(traitlet):
-            if updating["flag"]:
-                return
-            selected_onsets.loc[current_key(), "Viewing"] = traitlet["new"]
-            update_status()
-            redraw()
-
-        def move(step):
-            i = keys.index(current_key()) + step
-            if 0 <= i < len(keys):
-                show_key(keys[i])
-
-        wgt_event.observe(on_event, names="value")
-        wgt_channel.observe(on_channel, names="value")
-        wgt_viewing.observe(on_viewing, names="value")
-        btn_previous.on_click(lambda _: move(-1))
-        btn_next.on_click(lambda _: move(1))
-        show_key(keys[0])
-        return widgets.VBox([
-            widgets.HBox([wgt_event, wgt_channel, btn_previous, btn_next]),
-            widgets.HBox([wgt_viewing, wgt_status]),
-            out_plot,
-        ])
-
-    def display_view_toggle(self):
-        w = widgets.Checkbox(value=self.vda.parameters.view_dfs, 
-                             description="Display the produced DataFrames", 
-                             disabled=False, 
-                             indent=True, 
-                             style=self.WIDGETS_STYLE)
-        self._bind(w, "view_dfs")
-        return w
-
-    def select_onsets(self):
-        temp_df = self.vda.df_options.droplevel(level=5)
-        df_index = temp_df.index[~temp_df.index.duplicated(keep="first")]
-        self.vda.parameters.selected_onsets = pd.DataFrame({"Viewing": [None for _ in df_index]}, index=df_index)
-        # Use all (the first viewing with an onset, in the order of the viewings).
-        # Interactive selection starts from the same viewings
-        for i, _ in self.vda.parameters.selected_onsets.iterrows():
-            for v in self.vda.parameters.viewings:
-                try:
-                    self.vda.df_options.loc[i+(v,)]
-                except KeyError:
-                    continue
-                self.vda.parameters.selected_onsets.loc[i, "Viewing"] = v
-                break
-        if self.vda.parameters.onset_selection == OnsetSelection.INTERACTIVE:
-            return self._display_onset_selection()
-
-    
+    res = vda.results.loc[event_no]
+    fig = plt.figure(figsize=(12, 8), layout="constrained")
+    ax = fig.add_subplot()
+    ax.scatter(
+        inv_betas,
+        [to_time(t) for t in fit["onset_seconds"]],
+        color="black",
+    )
+    ax.plot(
+        inv_betas,
+        [to_time(a * x + b) for x in inv_betas],
+        label="Linear Regression",
+        color="blue",
+    )
+    ax.fill_between(
+        inv_betas,
+        [to_time(a * x + b - 2 * b_error) for x in inv_betas],
+        [to_time(a * x + b + 2 * b_error) for x in inv_betas],
+        color="blue",
+        alpha=0.1,
+    )
+    fig.suptitle(f"Event {event_no} ({vda.df_grouped.loc[event_no].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
+    ax.set_xlabel("Inverse Beta")
+    ax.set_ylabel("Time")
+    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    # the results are shown as legend entries without markers
+    for label in (
+        f"Extra Time = {vda.format_timedelta(res['Extra Time'])}",
+        f"Release Time = {res['Release Time']} +/- {vda.format_timedelta(res['Release Time Error'])}",
+        f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
+    ):
+        ax.plot([], [], alpha=0, label=label)
+    # legend between the title and the plot
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=2, frameon=False)
+    if filename:
+        fig.savefig(filename)
+    return fig
