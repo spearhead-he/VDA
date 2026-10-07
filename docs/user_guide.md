@@ -12,7 +12,7 @@
 The notebook `vda_tool.ipynb` has a setup cell, a form with all the parameters, and one cell per step of the analysis:
 
 ```python
-from vda_notebook import VDA_notebook
+from spearhead.vda.notebook import VDA_notebook
 tool = VDA_notebook()        # setup
 
 tool.parameters_form()       # all the parameters

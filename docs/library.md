@@ -4,20 +4,19 @@ The analysis code can be used in scripts or other notebooks:
 
 | File | Contents |
 |---|---|
-| `vda.py` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit) |
-| `vda_tool_configuration.py` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
-| `vda_views.py` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
-| `vda_widgets.py` | `VDA_nb_displayer`: the widgets of the notebook |
-| `vda_notebook.py` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form and analysis steps) |
+| `spearhead.vda.analysis` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit) |
+| `spearhead.vda.conf` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
+| `spearhead.vda.views` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
+| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form, analysis steps and their widgets) |
+
+`VDA`, `VDA_parameters` and `OnsetSelection` can also be imported directly from `spearhead.vda`.
 
 The files are not an installable package yet: run the scripts from the folder of the tool, or add it to the Python path.
 
 ## Example
 
 ```python
-import vda_views
-from vda import VDA
-from vda_tool_configuration import VDA_parameters
+from spearhead.vda import VDA, VDA_parameters, views
 
 parameters = VDA_parameters()
 parameters.input_filepath = "examples/datetime_range_example.csv"
@@ -51,12 +50,12 @@ vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()
 print(vda.results)
 
-fig = vda_views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
+fig = views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
 ```
 
 ## Plots
 
-The functions of `vda_views.py` return a matplotlib figure without showing it, saved to `filename` if one is given:
+The functions of `spearhead.vda.views` return a matplotlib figure without showing it, saved to `filename` if one is given:
 
 | Function | Plot |
 |---|---|
@@ -65,6 +64,18 @@ The functions of `vda_views.py` return a matplotlib figure without showing it, s
 | `plot_vda(vda, event_no)` | VDA fit of the event (after `vda.compute_vda()`) |
 
 `vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
+
+## Widgets in another notebook
+
+`VDA_notebook` can use an existing `VDA` object, to check the background windows or select the onsets interactively in another notebook:
+
+```python
+from spearhead.vda.notebook import VDA_notebook
+
+tool = VDA_notebook(vda)
+tool.background_selection()   # after vda.group_energy_channels()
+tool.onset_selection()        # after vda.select_onsets()
+```
 
 ## Parameters
 

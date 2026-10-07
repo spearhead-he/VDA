@@ -5,18 +5,19 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 ## [Unreleased]
 
 ### Added
-- `vda_views.py` with the plots as functions that return matplotlib figures (`plot_bg`, `plot_onsets`, `plot_vda`), without displaying them. They are saved only when a filename is given.
+- `spearhead.vda` package: `VDA`, `VDA_parameters` and `OnsetSelection` are imported from `spearhead.vda`, and the modules are `analysis` (previously `vda.py`), `conf` (previously `vda_tool_configuration.py`), `views` and `notebook` (previously `vda_notebook.py`).
+- `spearhead.vda.views` with the plots as functions that return matplotlib figures (`plot_bg`, `plot_onsets`, `plot_vda`), without displaying them. They are saved only when a filename is given.
 - `VDA.select_onsets()`: the "Use all" onset selection, without widgets.
 - `channel_groups` has the default grouped channels as its default value, so they are also used without the notebook. The channel groups widget shows the groups of `channel_groups`.
 
 ### Changed
-- The widgets are in `vda_widgets.py` (previously `vda_views.py`). `VDA_nb_displayer.display_onset_selection()` shows the interactive onset selection.
+- The widgets of `vda_views.py` (`VDA_nb_displayer`) are part of `VDA_notebook`. `VDA_notebook(vda)` can use an existing `VDA` object, e.g. for `background_selection()` and `onset_selection()` (the interactive onset selection) in another notebook.
 - `bg_window`, `bg_window_source`, `bg_window_points`, `bg_window_warnings`, `check_bg_window`, `channel_energy_range`, `format_timedelta` and `vda_fits` of `VDA` are public (previously with a leading underscore).
 
 ### Removed
-- `VDA.plot()`, `VDA.plot_vda()` and `VDA.plot_bg_selection()`: replaced by `VDA.compute_vda()` and the functions of `vda_views.py`.
+- `VDA.plot()`, `VDA.plot_vda()` and `VDA.plot_bg_selection()`: replaced by `VDA.compute_vda()` and the functions of `spearhead.vda.views`.
 - Parameter `default_channel_groups`: the default groups are the default value of `channel_groups`.
-- `VDA_nb_displayer.construct_energies_df()` and `VDA_nb_displayer.select_onsets()`: replaced by `VDA.construct_energies_df()` and `VDA.select_onsets()`.
+- `VDA_nb_displayer`: its widgets are part of `VDA_notebook`, its `construct_energies_df()` and `select_onsets()` are replaced by `VDA.construct_energies_df()` and `VDA.select_onsets()`.
 
 ## [0.4.0] - 2026-10-06
 

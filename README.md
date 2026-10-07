@@ -47,7 +47,7 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 Open the Notebook `vda_tool.ipynb` and run its cells in order: a setup cell, a form with all the parameters (tabs Events, Data, Energy channels, Onsets and Views/Plots), and one cell per step of the analysis:
 
 ```python
-from vda_notebook import VDA_notebook
+from spearhead.vda.notebook import VDA_notebook
 tool = VDA_notebook()
 
 tool.parameters_form()       # all the parameters

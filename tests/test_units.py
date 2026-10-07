@@ -14,9 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import vda as vda_module
-from vda import VDA
-from vda_tool_configuration import OnsetSelection, VDA_parameters
+from spearhead.vda import OnsetSelection, VDA, VDA_parameters
+from spearhead.vda import analysis
 
 
 def make_vda(**parameters) -> VDA:
@@ -275,7 +274,7 @@ def vda_with_onsets(onsets):
 
 @pytest.fixture
 def fixed_spacecraft_distance(monkeypatch):
-    monkeypatch.setattr(vda_module.spice, "get_body", lambda *args, **kwargs: FixedDistance())
+    monkeypatch.setattr(analysis.spice, "get_body", lambda *args, **kwargs: FixedDistance())
     return (FixedDistance.distance / const.c).to(u.s).value
 
 

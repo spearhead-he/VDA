@@ -8,9 +8,7 @@ from pandas.errors import PerformanceWarning
 from astropy.visualization import quantity_support
 
 from tests.helpers import strip_figure_text
-from vda_tool_configuration import VDA_parameters
-import vda_views
-from vda import VDA
+from spearhead.vda import VDA, VDA_parameters, views
 
 # omit Pandas' PerformanceWarning
 simplefilter(action='ignore', category=PerformanceWarning)
@@ -47,7 +45,7 @@ def test_vda_default():
     vda.group_energy_channels()
 
     for event_no in vda.df_grouped.index.unique(level=0):
-        vda_views.plot_bg(vda, event_no)
+        views.plot_bg(vda, event_no)
 
     vda.calculate_onsets()
 
@@ -65,7 +63,7 @@ def test_vda_default():
 
     vda.compute_vda()
 
-    fig = vda_views.plot_vda(vda, 1)
+    fig = views.plot_vda(vda, 1)
 
     # check legend contents manually
     handles, labels = fig.axes[0].get_legend_handles_labels()

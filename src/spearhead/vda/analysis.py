@@ -6,7 +6,7 @@ The VDA class performs the steps of the analysis:
 - onsets: onset times of each grouped channel and viewing, and the selection of the ones used for the fit
 - VDA fit: release time and apparent path length of each event
 
-Its parameters are in vda_tool_configuration.py and its plots in vda_views.py.
+Its parameters are in conf.py and its plots in views.py.
 """
 import numpy as np
 import pandas as pd
