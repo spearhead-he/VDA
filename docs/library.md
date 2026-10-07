@@ -11,7 +11,21 @@ The analysis code can be used in scripts or other notebooks:
 
 `VDA`, `VDA_parameters` and `OnsetSelection` can also be imported directly from `spearhead.vda`.
 
-The files are not an installable package yet: run the scripts from the folder of the tool, or add it to the Python path.
+## Installation
+
+From the folder of the tool (see the [README](../README.md#install-locally)):
+
+```bash
+pip install -e .
+```
+
+or directly from GitHub, without the notebook:
+
+```bash
+pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA"
+```
+
+The extra `[notebook]` (e.g. `pip install -e ".[notebook]"`) also installs the notebook dependencies (Jupyter and ipywidgets), needed by `spearhead.vda.notebook`. The extra `[test]` installs the tools to run the tests (`pytest tests/`). The installed version is `spearhead.vda.__version__`.
 
 ## Example
 

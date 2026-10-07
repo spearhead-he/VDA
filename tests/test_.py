@@ -16,8 +16,8 @@ filterwarnings(action='ignore', message="Discarding nonzero nanoseconds in conve
 
 
 """
-Install dependencies for tests:
-pip install flake8 pytest pytest-doctestplus pytest-cov pytest-mpl
+Install the package with the dependencies for tests, from the base directory of the repository:
+pip install -e ".[notebook,test]"
 
 To create/update the baseline images, run the following command from the base package dir:
 pytest --mpl-generate-path=tests/baseline tests/test_.py

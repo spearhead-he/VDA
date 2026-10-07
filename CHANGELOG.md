@@ -5,6 +5,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 ## [Unreleased]
 
 ### Added
+- Installable package `spearhead-vda` (`pyproject.toml`): `pip install -e ".[notebook]"` from the folder of the tool, or `pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA"`. The extras are `notebook` (Jupyter and ipywidgets) and `test`. `requirements.txt` installs the package with the notebook extra. The notebook also runs from the folder of the tool without installing the package.
+- `spearhead.vda.__version__`.
 - `spearhead.vda` package: `VDA`, `VDA_parameters` and `OnsetSelection` are imported from `spearhead.vda`, and the modules are `analysis` (previously `vda.py`), `conf` (previously `vda_tool_configuration.py`), `views` and `notebook` (previously `vda_notebook.py`).
 - `spearhead.vda.views` with the plots as functions that return matplotlib figures (`plot_bg`, `plot_onsets`, `plot_vda`), without displaying them. They are saved only when a filename is given.
 - `VDA.select_onsets()`: the "Use all" onset selection, without widgets.
@@ -15,6 +17,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - `bg_window`, `bg_window_source`, `bg_window_points`, `bg_window_warnings`, `check_bg_window`, `channel_energy_range`, `format_timedelta` and `vda_fits` of `VDA` are public (previously with a leading underscore).
 
 ### Removed
+- `astrospice` and `seppy` from the requirements: they are not used by the tool (`seppy` is installed by `pyonset`).
 - `VDA.plot()`, `VDA.plot_vda()` and `VDA.plot_bg_selection()`: replaced by `VDA.compute_vda()` and the functions of `spearhead.vda.views`.
 - Parameter `default_channel_groups`: the default groups are the default value of `channel_groups`.
 - `VDA_nb_displayer`: its widgets are part of `VDA_notebook`, its `construct_energies_df()` and `select_onsets()` are replaced by `VDA.construct_energies_df()` and `VDA.select_onsets()`.

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spearhead-vda"
+description = "Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events with Solar Orbiter EPD data"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+    {name = "George Vasalos"},
+    {name = "Jan Gieseler"},
+]
+requires-python = ">=3.10"
+dependencies = [
+    "astropy>=6.1.7",
+    "matplotlib>=3.6.3",
+    "numpy>=1.24.1",
+    "pandas>=1.5.3",
+    "pyonset @ git+https://github.com/Christian-Palmroos/PyOnset/",
+    "solo-epd-loader>=0.3.7",
+    "sunpy[all]>=6.0.4",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+notebook = [
+    "ipywidgets>=8.1.5",
+    "jupyter",
+]
+test = [
+    "flake8",
+    "nbmake",
+    "pytest",
+    "pytest-cov",
+    "pytest-doctestplus",
+    "pytest-mpl",
+]
+
+[project.urls]
+Repository = "https://github.com/spearhead-he/VDA"
+Documentation = "https://github.com/spearhead-he/VDA/tree/main/docs"
+Changelog = "https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md"
+DOI = "https://doi.org/10.5281/zenodo.14441053"
+
+[tool.setuptools.dynamic]
+version = {attr = "spearhead.vda.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# spearhead is a namespace package, shared with other SPEARHEAD tools
+namespaces = true

@@ -39,7 +39,7 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 3. Open a terminal or the miniforge prompt and move to the directory where the code is.
 4. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
 5. If you **don't** have `git` installed (try executing it), install it with `conda install conda-forge::git`.
-6. Install the Python dependencies from the *requirements.txt* file with `pip install -r requirements.txt`
+6. Install the tool and its dependencies with `pip install -e ".[notebook]"` (or, equivalently, `pip install -r requirements.txt`)
 7. Open the Jupyter Notebook by running `jupyter-lab vda_tool.ipynb`
 
 ## How to use
