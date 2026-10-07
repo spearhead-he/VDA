@@ -24,7 +24,7 @@ def _time_axis(ax, times, maxticks=None) -> None:
 
 def plot_bg(vda, event_no, filename=None) -> Figure:
     """Plots the grouped channels of the event with its background window"""
-    fig = plt.figure(figsize=(12, 6), layout="constrained")
+    fig = plt.figure(figsize=(16, 7), layout="constrained")
     ax = fig.add_subplot()
     # one colormap per sensor and particle, darker for the later channels of the group
     colormaps = ["Blues", "Oranges", "Greens", "Purples", "Reds", "Greys"]

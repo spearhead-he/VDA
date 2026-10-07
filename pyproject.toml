@@ -26,6 +26,9 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 notebook = [
+    # ipykernel 7.0-7.3 can stop responding to messages (ipython/ipykernel#1529); 7.4 needs Python >= 3.11
+    "ipykernel>=7.4; python_version >= '3.11'",
+    "ipykernel<7; python_version < '3.11'",
     "ipywidgets>=8.1.5",
     "jupyter",
 ]
