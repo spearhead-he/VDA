@@ -59,13 +59,13 @@ tool.run_vda()               # results and plots
 
 The events are given with a .csv file (datetime ranges or reference times, see the [examples](examples/)) or entered in the form. See the [user guide](docs/user_guide.md) for details.
 
-## What's new in v0.4.0
+## What's new in v0.5.0
 
-- The Notebook has a form with all the parameters and one cell per step of the analysis (6 code cells instead of 26).
-- The channel selection lists show the energy range of each channel.
-- Saved data include their resample frequency, and the load and save options are just file paths.
-- Removed or misspelled parameters raise an error explaining what to use instead.
-- The "Custom List" onset selection, which was not implemented, is removed.
+- The tool is an installable Python package, `spearhead.vda`, which can also be used in scripts and other notebooks (see [Using the VDA tool without the notebook](docs/library.md)).
+- The plots are returned as matplotlib figures (`spearhead.vda.views`), saved only when a filename is given.
+- The background window and interactive onset selection widgets can be used in other notebooks with `VDA_notebook(vda)`.
+- The default grouped channels are also used without the notebook.
+- Fixed: the Notebook could stop responding with ipykernel 7.0 to 7.3.
 
 See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
