@@ -106,7 +106,7 @@ tool.onset_selection()        # after vda.select_onsets()
 | `viewings` | Viewings, in the priority order of the "Use all" onset selection |
 | `resample_frequency` | Pandas offset alias (e.g. `"5min"`), or `""` for no resampling |
 | `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}`. By default, 8 groups of HET protons and 2 of HET electrons |
-| `onset_method`, `onset_method_parameters` | Onset determination method (`"sigma"`) and its parameters (`s`, `n`) |
+| `onset_method`, `onset_method_parameters` | Onset determination method, `"sigma"` (parameters `s`, `n`) or `"poisson_cusum"` (parameters `cusum_minutes`, `sigma_multiplier`), see the [user guide](user_guide.md#onset-determination). Setting `onset_method` sets its parameters to their defaults |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |
 

@@ -4,6 +4,7 @@
 - [Parameters](#parameters)
 - [Events](#events)
 - [Background window](#background-window)
+- [Onset determination](#onset-determination)
 - [Onset selection](#onset-selection)
 - [Results](#results)
 
@@ -36,7 +37,7 @@ The parameters form has five tabs:
   - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), blank for no resampling)
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.
 - **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$.
-- **Onsets**: the onset determination method and its parameters, the default background window, and the onset selection method.
+- **Onsets**: the onset determination method and its parameters (see [Onset determination](#onset-determination)), the default background window, and the onset selection method.
 - **Views/Plots**: font sizes, saving of the VDA plots as .png files, and display of the intermediate tables.
 
 ## Events
@@ -61,6 +62,17 @@ Each event has a background window, used for the onset determination:
 After the data are downloaded, the background window of each event can be checked and changed with the event dropdown and the "Background" slider, or set back to the default one ("Reset to default"). The chosen windows can be saved with `tool.vda.save_times("path.csv")`, and the saved file can be used as the events file of later runs.
 
 A warning is shown for background windows outside the data of the event, or with fewer than 3 data points.
+
+## Onset determination
+
+The onset of each grouped channel and viewing is determined with the background window of its event, with one of the methods:
+
+- **Sigma threshold** (`sigma`): the threshold is the background mean plus `s` standard deviations of the background, and the onset is found when `n` consecutive points are above it.
+- **Poisson-CUSUM** (`poisson_cusum`): the Poisson-CUSUM method of [pyonset](https://github.com/Christian-Palmroos/PyOnset). The intensities are standardized with the background mean and standard deviation, and the onset is searched after the background window: it is found when the CUSUM function stays above its threshold for `cusum_minutes` (converted to data points with the cadence of the data). `sigma_multiplier` sets μd, the background mean plus `sigma_multiplier` standard deviations, used for the k parameter of the CUSUM function.
+
+With both methods, the onset is the last point before the rise: before the first of the `n` points above the threshold (Sigma threshold), or before the CUSUM function first exceeds its threshold (Poisson-CUSUM, as in pyonset).
+
+The plots of the interactive onset selection show the background level and the threshold (Sigma threshold) or μd (Poisson-CUSUM), and their values. Changing the method sets its parameters to their defaults.
 
 ## Onset selection
 

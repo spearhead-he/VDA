@@ -51,7 +51,29 @@ AVAILABLE_ONSET_METHODS = {
             "default": 3,
             "description": "Number of consecutive points that should cross the threshold:",
         },
-    }
+    },
+    # Poisson-CUSUM method of pyonset
+    "poisson_cusum": {
+        "cusum_minutes": {
+            "type": int,
+            "min": 5,
+            "max": 120,
+            "default": 30,
+            "description": "Minutes the CUSUM function should stay above its threshold:",
+        },
+        "sigma_multiplier": {
+            "type": int,
+            "min": 1,
+            "max": 5,
+            "default": 2,
+            "description": "μd = background mean + <this parameter>*<standard deviation>:",
+        },
+    },
+}
+
+ONSET_METHOD_LABELS = {
+    "sigma": "Sigma threshold",
+    "poisson_cusum": "Poisson-CUSUM",
 }
 
 # Removed parameters: the version they were removed in and what replaces them
@@ -132,9 +154,8 @@ class VDA_parameters:
     # Grouped energy channels of each particle: {label: {"sensor": "het" or "ept", "channels": [...]}}
     channel_groups: dict = field(default_factory=_default_channel_groups)
     onset_method: str = next(iter(AVAILABLE_ONSET_METHODS))
-    onset_method_parameters: dict = field(
-        default_factory=lambda: _default_onset_method_parameters(next(iter(AVAILABLE_ONSET_METHODS)))
-    )
+    # Parameters of the onset method. By default (None), the defaults of the method
+    onset_method_parameters: dict | None = None
     onset_selection: OnsetSelection = OnsetSelection.USE_ALL
     # Selected viewing of each grouped channel, set by the onset selection
     selected_onsets: pd.DataFrame | None = field(default=None, repr=False, compare=False)
@@ -145,6 +166,10 @@ class VDA_parameters:
     AVAILABLE_VIEWINGS: ClassVar[tuple] = AVAILABLE_VIEWINGS
     AVAILABLE_ONSET_METHODS: ClassVar[dict] = AVAILABLE_ONSET_METHODS
 
+    def __post_init__(self):
+        if self.onset_method_parameters is None:
+            self.onset_method_parameters = _default_onset_method_parameters(self.onset_method)
+
     def __setattr__(self, name, value):
         # catches removed parameters and typos, which would otherwise be silently ignored
         if name in REMOVED_PARAMETERS:
@@ -152,6 +177,12 @@ class VDA_parameters:
             raise AttributeError(f"The {name} parameter was removed in {version}. {replacement}")
         if name not in {f.name for f in fields(self)}:
             raise AttributeError(f"VDA_parameters has no parameter '{name}'")
+        if name == "onset_method":
+            if value not in AVAILABLE_ONSET_METHODS:
+                raise ValueError(f"Unknown onset method {value!r}. Use one of: {', '.join(AVAILABLE_ONSET_METHODS)}")
+            # the parameters of another method are replaced by the defaults of the new one
+            if getattr(self, "onset_method", value) != value:
+                super().__setattr__("onset_method_parameters", _default_onset_method_parameters(value))
         if name == "onset_selection":
             try:
                 value = OnsetSelection(value)

@@ -13,6 +13,8 @@ import pandas as pd
 import astropy.units as u
 import astropy.constants as const
 
+from contextlib import redirect_stdout
+from io import StringIO
 from math import sqrt
 from os import getcwd
 from datetime import datetime, timedelta
@@ -20,7 +22,7 @@ from datetime import datetime, timedelta
 from sunpy.coordinates import spice
 from sunpy.data import cache
 from solo_epd_loader import epd_load
-from pyonset import Onset, BootstrapWindow
+from pyonset import onset_determination
 
 
 class VDA:
@@ -425,6 +427,15 @@ class VDA:
         if self.parameters.view_dfs:
             return self.df_grouped
 
+    @staticmethod
+    def _bg_times(series: pd.Series, bg_start, bg_end) -> tuple:
+        """The background start and end as times, also when given as point indices"""
+        if isinstance(bg_start, (int, np.integer)):
+            bg_start = series.index[bg_start]
+        if isinstance(bg_end, (int, np.integer)):
+            bg_end = series.index[bg_end]
+        return bg_start, bg_end
+
     def _onset_detection_sigma(
         self,
         series: pd.Series,
@@ -433,31 +444,33 @@ class VDA:
         bg_start: int | datetime = 0,
         bg_end: int | datetime = 12,
     ) -> tuple:
-        """Returns:
+        """The onset is the last point before the first of n consecutive points above the threshold
+        (as the Poisson-CUSUM method of pyonset).
+
+        Returns:
 
         1. Onset time or None if no event detected
         2. Background start
         3. Background end
-        4. Background Level
-        5. Threshold
+        4. Method specific values: background level and threshold
         """
-        if isinstance(bg_start, (int, np.integer)):
-            bg_start = series.index[bg_start]
-        if isinstance(bg_end, (int, np.integer)):
-            bg_end = series.index[bg_end]
+        bg_start, bg_end = self._bg_times(series, bg_start, bg_end)
         bg_level = (bg_series := series[bg_start:bg_end]).mean()
         threshold = bg_level + s * bg_series.std()
         onset_time = None
 
         streak = 0
+        previous = None
         for index, value in series.items():
             if value > threshold:
                 streak += 1
                 if onset_time is None:
-                    onset_time = index
+                    # the first point of the series has no point before it
+                    onset_time = index if previous is None else previous
             else:
                 streak = 0
                 onset_time = None
+            previous = index
 
             if streak >= n:
                 break
@@ -472,93 +485,58 @@ class VDA:
             {"bg_level": bg_level, "threshold": threshold},
         )
 
-    def _onset_detection_poisson_cusum_bootstrap(
+    def _onset_detection_poisson_cusum(
         self,
         series: pd.Series,
-        sensor: str,
-        particle: str,
-        viewing: str,
-        channel: str,
+        cusum_minutes: int = 30,
+        sigma_multiplier: int = 2,
         bg_start: int | datetime = 0,
         bg_end: int | datetime = 12,
-        bootstraps: int = 1000,
-        cusum_minutes: int = 60,
-        sample_size: float = 0.75,
-        limit_averaging: str = "4 min",
     ) -> tuple:
-        if isinstance(bg_start, (int, np.integer)):
-            bg_start = series.index[bg_start]
-        if isinstance(bg_end, (int, np.integer)):
-            bg_end = series.index[bg_end]
-        df = pd.DataFrame(series)
-        df.index.freq = self.parameters.resample_frequency
-        protons = Onset(
-            spacecraft="Solar Orbiter",
-            sensor=sensor.upper(),
-            species=particle[
-                :-1
-            ],  # rest of the tool uses the plurar form. This function needs singular, so omit the final "s"
-            viewing=viewing,
-            data_level="l2",
-            data_path="",
-            start_date="",
-            end_date="",
-            data=df,
-        )
-        channels = channel.split("-")
-        protons.set_custom_channel_energies(
-            low_bounds=[self.df_energies.loc[sensor, channels[0]]["Low Energy"]],
-            high_bounds=[self.df_energies.loc[sensor, channels[1]]["High Energy"]],
-            unit="MeV",
-        )
-        bg = BootstrapWindow(
-            start=bg_start.strftime("%Y-%m-%d %H:%M"),
-            end=bg_end.strftime("%Y-%m-%d %H:%M"),
-            bootstraps=bootstraps,
-        )
-        rng = 101010101
-        protons.onset_statistics_per_channel(
-            channels=channel,
-            background=bg,
-            cusum_minutes=cusum_minutes,
-            sample_size=sample_size,
-            viewing=protons.viewing,
-            limit_averaging=limit_averaging,
-            random_seed=rng,
-            print_output=False,
-        )
+        """Poisson-CUSUM onset determination of pyonset (onset_determination), after the background window.
+
+        Returns:
+
+        1. Onset time or None if no event detected
+        2. Background start
+        3. Background end
+        4. Method specific values: background level, mu_d (background level + sigma_multiplier * standard
+           deviation), and the k and h parameters of the CUSUM function
+        """
+        bg_start, bg_end = self._bg_times(series, bg_start, bg_end)
+        bg_series = series[bg_start:bg_end]
+        # the CUSUM window in data points, from the cadence of the series (also without resampling)
+        cadence = series.index.to_series().diff().median()
+        cusum_window = max(1, round(pd.Timedelta(minutes=cusum_minutes) / cadence))
+        # pyonset prints its warnings (e.g. for a background of zeros)
+        with redirect_stdout(StringIO()):
+            bg_level, mu_d, k, h, _, _, onset_time = onset_determination(
+                (np.nanmean(bg_series), np.nanstd(bg_series)),
+                series,
+                cusum_window,
+                bg_end,
+                sigma_multiplier=sigma_multiplier,
+            )
 
         return (
-            protons.onset_statistics[channel][0],
+            None if pd.isna(onset_time) else onset_time,
             bg_start,
             bg_end,
-            protons.onset_statistics[channel],
+            {"bg_level": bg_level, "mu_d": mu_d, "k": k, "h": h},
         )
 
-    def _onset_detection(
-        self, series: pd.Series, method: str = "sigma", **kwargs
-    ) -> tuple:
-        if method == "sigma":
-            onset_results = self._onset_detection_sigma(
-                series, kwargs["s"], kwargs["n"], kwargs["bg_start"], kwargs["bg_end"]
-            )
-        elif method == "poisson_cusum_bootstrap":
-            onset_results = self._onset_detection_poisson_cusum_bootstrap(
-                series,
-                kwargs["sensor"],
-                kwargs["particle"],
-                kwargs["viewing"],
-                kwargs["channel"],
-                kwargs["bg_start"],
-                kwargs["bg_end"],
-                kwargs["bootstraps"],
-                kwargs["cusum_minutes"],
-                kwargs["sample_size"],
-                kwargs["limit_averaging"],
-            )
-        else:
-            raise ValueError(f'Method named "{method}" is not implented')
-        return onset_results
+    # Onset determination method of each name of AVAILABLE_ONSET_METHODS
+    ONSET_DETECTION_METHODS = {
+        "sigma": "_onset_detection_sigma",
+        "poisson_cusum": "_onset_detection_poisson_cusum",
+    }
+
+    def _onset_detection(self, series: pd.Series, method: str = "sigma", **kwargs) -> tuple:
+        try:
+            detect = getattr(self, self.ONSET_DETECTION_METHODS[method])
+        except KeyError:
+            raise ValueError(f"Unknown onset method {method!r}") from None
+        return detect(series, **kwargs)
 
     def _onset_detection_df(
         self, df: pd.DataFrame, method: str = "sigma", **kwargs
@@ -572,25 +550,22 @@ class VDA:
                 df_inner = df_event[sensor][particle][viewing][particle_prefix]
                 for column_name in df_inner.columns:
                     new_kwargs = dict(kwargs)
-                    new_kwargs["sensor"] = sensor
-                    new_kwargs["particle"] = particle
-                    new_kwargs["viewing"] = viewing
-                    new_kwargs["channel"] = column_name
                     new_kwargs["bg_start"] = bg_start
                     new_kwargs["bg_end"] = bg_end
+                    # the background window of the event is kept for the next channels, also after a failure
                     try:
-                        onset_time, bg_start, bg_stop, method_specific = self._onset_detection(
+                        onset_time, used_bg_start, used_bg_end, method_specific = self._onset_detection(
                             df_inner[column_name].droplevel(0, axis="index"),
                             method,
                             **new_kwargs,
                         )
                     except Exception as e:
                         print(index_event, type(e).__name__, new_kwargs)
-                        onset_time, bg_start, bg_stop, method_specific = pd.NaT, pd.NaT, pd.NaT, None
+                        onset_time, used_bg_start, used_bg_end, method_specific = pd.NaT, pd.NaT, pd.NaT, None
                     rows.append({
                         "Onset Time": onset_time,
-                        "Background Start": bg_start,
-                        "Background End": bg_stop,
+                        "Background Start": used_bg_start,
+                        "Background End": used_bg_end,
                         "Method Specific": method_specific,
                     })
                     index.append((index_event, sensor, particle, viewing, particle_prefix, column_name))
@@ -611,6 +586,14 @@ class VDA:
                     f"is set with set_default_bg_window (minutes after the start time), "
                     f"and the window of an event with set_bg_window."
                 )
+        method = self.parameters.onset_method
+        expected = set(self.parameters.AVAILABLE_ONSET_METHODS[method])
+        given = set(self.parameters.onset_method_parameters)
+        if given - expected:
+            raise ValueError(
+                f"Parameters {sorted(given - expected)} are not parameters of the {method} onset method, "
+                f"whose parameters are {sorted(expected)}"
+            )
         self.df_onsets = self._onset_detection_df(
             self.df_grouped,
             self.parameters.onset_method,

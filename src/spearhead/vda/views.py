@@ -95,12 +95,20 @@ def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selec
         ax.axvspan(onset_results["Background Start"], onset_results["Background End"],
                    color="green", alpha=0.3, label="BG sample")
         values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
-        # bg level and threshold are only provided by the sigma method
+        # values of the onset method: threshold (sigma), mu_d and the k and h parameters (Poisson-CUSUM)
         method_specific = onset_results["Method Specific"]
-        if isinstance(method_specific, dict) and "bg_level" in method_specific:
+        if not isinstance(method_specific, dict):
+            method_specific = {}
+        if "bg_level" in method_specific:
             ax.axhline(method_specific["bg_level"], color="green", linestyle="dashed", label="BG level")
+            values.append(f"BG {method_specific['bg_level']:.3g}")
+        if "threshold" in method_specific:
             ax.axhline(method_specific["threshold"], color="red", linestyle="dashed", label="Threshold")
-            values += [f"BG {method_specific['bg_level']:.3g}", f"Threshold {method_specific['threshold']:.3g}"]
+            values.append(f"Threshold {method_specific['threshold']:.3g}")
+        if "mu_d" in method_specific:
+            ax.axhline(method_specific["mu_d"], color="red", linestyle="dashed", label="μd")
+            values += [f"μd {method_specific['mu_d']:.3g}",
+                       f"k {method_specific['k']:.3g}, h {method_specific['h']:.3g}"]
         ax.axvline(onset_results["Onset Time"], color="purple", linestyle="dashed", label="Onset")
         ax.text(0.98, 0.03, "\n".join(values), transform=ax.transAxes, ha="right", va="bottom",
                 fontsize="x-small", bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"})

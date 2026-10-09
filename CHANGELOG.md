@@ -2,6 +2,22 @@
 
 All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Poisson-CUSUM onset determination method (`onset_method = "poisson_cusum"`), from pyonset, with the parameters `cusum_minutes` and `sigma_multiplier`. The onset plots show its background level, μd and the k and h parameters.
+
+### Changed
+- The onset of the Sigma threshold method is the last point before the first of the `n` points above the threshold (previously the first point above it), as in the Poisson-CUSUM method of pyonset. The onsets, and so the release times, are one data point earlier (e.g. 5 minutes with the default resampling); the apparent path lengths are unchanged when all the onsets move by the same time.
+- Setting `onset_method` sets `onset_method_parameters` to the defaults of the method, and the parameters form shows the parameters of the selected method. The onset methods are listed with their names (Sigma threshold, Poisson-CUSUM).
+- Parameters of another onset method raise an error when the onsets are calculated.
+
+### Fixed
+- After the onset determination of a channel failed, the next channels of the event were determined without a background window.
+
+### Removed
+- The unused and not selectable Poisson-CUSUM bootstrap method (`_onset_detection_poisson_cusum_bootstrap`).
+
 ## [0.5.0] - 2026-10-09
 
 ### Added
@@ -103,6 +119,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
+[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/spearhead-he/VDA/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/spearhead-he/VDA/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/spearhead-he/VDA/compare/v0.2.0...v0.3.0
