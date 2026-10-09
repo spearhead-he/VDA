@@ -6,6 +6,7 @@ The analysis code can be used in scripts or other notebooks:
 |---|---|
 | `spearhead.vda.analysis` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit) |
 | `spearhead.vda.conf` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
+| `spearhead.vda.observers` | The observers (spacecraft): their sensors, channels and viewings, data loading and distance from the Sun |
 | `spearhead.vda.views` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
 | `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form, analysis steps and their widgets) |
 
@@ -61,7 +62,7 @@ vda.clean_onsets()
 vda.construct_options_df()
 vda.select_onsets()                     # "Use all" onset selection
 vda.construct_energy_channels_characteristics()
-vda.define_spacecraft_parameters()      # SPICE kernels for the spacecraft distance
+vda.define_spacecraft_parameters()      # distance of the observer from the Sun (SPICE kernels for Solar Orbiter)
 vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()
 print(vda.results)
@@ -103,9 +104,10 @@ tool.onset_selection()        # after vda.select_onsets()
 | `date_ranges` | List of (start, end) datetimes, one per event, used without an events file |
 | `bg_hours_prior`, `bg_hours_after` | Data range of the files with reference times, in hours before and after the reference time |
 | `bg_after_start` | Default background window, (start, end) in minutes after the start of the data of each event |
-| `viewings` | Viewings, in the priority order of the "Use all" onset selection |
+| `observer` | Spacecraft of the data, one of `observers.OBSERVERS`. For now only `"solo"` (Solar Orbiter EPD: HET and EPT) |
+| `viewings` | Viewings, in the priority order of the "Use all" onset selection. By default, those of the observer (`["sun"]` for Solar Orbiter) |
 | `resample_frequency` | Pandas offset alias (e.g. `"5min"`), or `""` for no resampling |
-| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}`. By default, 8 groups of HET protons and 2 of HET electrons |
+| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}`. By default, those of the observer (for Solar Orbiter, 8 groups of HET protons and 2 of HET electrons) |
 | `onset_method`, `onset_method_parameters` | Onset determination method, `"sigma"` (parameters `s`, `n`) or `"poisson_cusum"` (parameters `cusum_minutes`, `sigma_multiplier`), see the [user guide](user_guide.md#onset-determination). Setting `onset_method` sets its parameters to their defaults |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |

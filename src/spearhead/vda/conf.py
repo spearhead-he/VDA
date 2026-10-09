@@ -1,7 +1,7 @@
 """Parameters of the VDA analysis.
 
-VDA_parameters holds all the parameters (events, data, energy channels, onset method and selection), with
-their defaults and the available options. Setting an unknown or removed parameter raises an error.
+VDA_parameters holds all the parameters (events, observer, data, energy channels, onset method and selection),
+with their defaults and the available options (the sensors, channels and viewings are those of the observer). Setting an unknown or removed parameter raises an error.
 OnsetSelection is the onset selection method.
 """
 from dataclasses import dataclass, field, fields
@@ -11,29 +11,13 @@ from typing import ClassVar
 
 import pandas as pd
 
+from .observers import DEFAULT_OBSERVER, OBSERVERS
+
 
 class OnsetSelection(IntEnum):
     USE_ALL = 0
     INTERACTIVE = 1
 
-
-AVAILABLE_SENSORS_PARTICLES = {
-    "het": ("protons", "electrons"),
-    "ept": ("protons", "electrons"),
-}
-
-AVAILABLE_CHANNELS = {
-    "het": {
-        "protons": tuple(range(36)),
-        "electrons": tuple(range(4)),
-    },
-    "ept": {
-        "protons": tuple(range(64)),
-        "electrons": tuple(range(34)),
-    },
-}
-
-AVAILABLE_VIEWINGS = ("sun", "asun", "north", "south", "omni")
 
 AVAILABLE_ONSET_METHODS = {
     "sigma": {
@@ -91,41 +75,18 @@ REMOVED_PARAMETERS = {
 }
 
 
-# Default grouped channels of each particle and sensor
-DEFAULT_CHANNEL_GROUPS = {
-    "protons": {
-        "het": [
-            [1, 2, 3],
-            [10, 11, 12],
-            [13, 14, 15],
-            [16, 17, 18],
-            [19, 20, 21],
-            [22, 23, 24],
-            [25, 26, 27],
-            [28, 29, 30, 31],
-        ],
-    },
-    "electrons": {
-        "het": [
-            [0, 1],
-            [2, 3],
-        ],
-    },
-}
-
-
 def channel_group_label(sensor: str, particle: str, number: int) -> str:
     return f"{sensor.upper()}/{particle} Channel {number}"
 
 
-def _default_channel_groups() -> dict:
+def _default_channel_groups(observer: str) -> dict:
     return {
         particle: {
             channel_group_label(sensor, particle, number): {"sensor": sensor, "channels": list(channels)}
             for sensor, groups in sensors.items()
             for number, channels in enumerate(groups, start=1)
         }
-        for particle, sensors in DEFAULT_CHANNEL_GROUPS.items()
+        for particle, sensors in OBSERVERS[observer].DEFAULT_CHANNEL_GROUPS.items()
     }
 
 
@@ -148,11 +109,15 @@ class VDA_parameters:
     load_data_filepath: str = ""
     # .pkl file to save the data to. If empty, the data are not saved
     save_data_filepath: str = ""
-    # Selected viewings. Their order is the priority of the "Use all" onset selection
-    viewings: list = field(default_factory=lambda: ["sun"])
+    # Observer (spacecraft) of the data, one of OBSERVERS
+    observer: str = DEFAULT_OBSERVER
+    # Selected viewings. Their order is the priority of the "Use all" onset selection.
+    # By default (None), the default viewings of the observer
+    viewings: list | None = None
     resample_frequency: str = "5min"
-    # Grouped energy channels of each particle: {label: {"sensor": "het" or "ept", "channels": [...]}}
-    channel_groups: dict = field(default_factory=_default_channel_groups)
+    # Grouped energy channels of each particle: {label: {"sensor": e.g. "het", "channels": [...]}}.
+    # By default (None), the default grouped channels of the observer
+    channel_groups: dict | None = None
     onset_method: str = next(iter(AVAILABLE_ONSET_METHODS))
     # Parameters of the onset method. By default (None), the defaults of the method
     onset_method_parameters: dict | None = None
@@ -161,12 +126,13 @@ class VDA_parameters:
     selected_onsets: pd.DataFrame | None = field(default=None, repr=False, compare=False)
     view_dfs: bool = True
 
-    AVAILABLE_SENSORS_PARTICLES: ClassVar[dict] = AVAILABLE_SENSORS_PARTICLES
-    AVAILABLE_CHANNELS: ClassVar[dict] = AVAILABLE_CHANNELS
-    AVAILABLE_VIEWINGS: ClassVar[tuple] = AVAILABLE_VIEWINGS
     AVAILABLE_ONSET_METHODS: ClassVar[dict] = AVAILABLE_ONSET_METHODS
 
     def __post_init__(self):
+        if self.viewings is None:
+            self.viewings = list(OBSERVERS[self.observer].DEFAULT_VIEWINGS)
+        if self.channel_groups is None:
+            self.channel_groups = _default_channel_groups(self.observer)
         if self.onset_method_parameters is None:
             self.onset_method_parameters = _default_onset_method_parameters(self.onset_method)
 
@@ -177,6 +143,8 @@ class VDA_parameters:
             raise AttributeError(f"The {name} parameter was removed in {version}. {replacement}")
         if name not in {f.name for f in fields(self)}:
             raise AttributeError(f"VDA_parameters has no parameter '{name}'")
+        if name == "observer" and value not in OBSERVERS:
+            raise ValueError(f"Unknown observer {value!r}. Use one of: {', '.join(OBSERVERS)}")
         if name == "onset_method":
             if value not in AVAILABLE_ONSET_METHODS:
                 raise ValueError(f"Unknown onset method {value!r}. Use one of: {', '.join(AVAILABLE_ONSET_METHODS)}")
@@ -190,6 +158,19 @@ class VDA_parameters:
                 options = ", ".join(f"OnsetSelection.{s.name} ({s.value})" for s in OnsetSelection)
                 raise ValueError(f"Unknown onset selection {value!r}. Use one of: {options}") from None
         super().__setattr__(name, value)
+
+    # Sensors, channels and viewings of the observer
+    @property
+    def AVAILABLE_SENSORS_PARTICLES(self) -> dict:
+        return OBSERVERS[self.observer].SENSORS_PARTICLES
+
+    @property
+    def AVAILABLE_CHANNELS(self) -> dict:
+        return OBSERVERS[self.observer].CHANNELS
+
+    @property
+    def AVAILABLE_VIEWINGS(self) -> tuple:
+        return OBSERVERS[self.observer].VIEWINGS
 
     @property
     def sensors_particles(self):

@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from spearhead.vda import OnsetSelection, VDA, VDA_parameters
-from spearhead.vda import analysis
+from spearhead.vda import analysis, observers
 
 
 def make_vda(**parameters) -> VDA:
@@ -272,6 +272,83 @@ def test_loaded_data_resample_frequency(tmp_path, capsys, saved_attrs, expected_
     assert (message in out) if message else ("esample" not in out)
 
 
+@pytest.mark.parametrize("saved_attrs", [{"observer": "solo"}, {}])
+def test_loaded_data_observer(tmp_path, saved_attrs):
+    # data saved without their observer are Solar Orbiter data
+    df = pd.DataFrame({"x": [1.0, 2.0]})
+    df.attrs = {"resample_frequency": "5min", **saved_attrs}
+    df.to_pickle(tmp_path / "data.pkl")
+    v = make_vda(load_data_filepath=str(tmp_path / "data.pkl"))
+    v.construct_particles_df()
+
+
+def test_loaded_data_of_another_observer(tmp_path):
+    df = pd.DataFrame({"x": [1.0, 2.0]})
+    df.attrs = {"observer": "other", "resample_frequency": "5min"}
+    df.to_pickle(tmp_path / "data.pkl")
+    v = make_vda(load_data_filepath=str(tmp_path / "data.pkl"))
+    with pytest.raises(ValueError, match="data of the 'other' observer"):
+        v.construct_particles_df()
+
+
+# ---------------------------------------------------------------- observers
+
+def epd_like_data(index, sensor="het"):
+    """Data as returned by epd_load: protons with 3 channels and electrons with 2"""
+    proton_flux, proton_bins = {"het": ("H_Flux", "H_Bins"), "ept": ("Ion_Flux", "Ion_Bins")}[sensor]
+
+    def particle(flux_column, n_channels):
+        columns = pd.MultiIndex.from_tuples(
+            [(flux_column, f"{flux_column}_{c}") for c in range(n_channels)]
+            + [("Uncertainty", f"Uncertainty_{c}") for c in range(n_channels)]
+        )
+        return pd.DataFrame(np.arange(len(index) * 2 * n_channels, dtype=float).reshape(len(index), -1),
+                            index=index, columns=columns)
+
+    energies = {
+        f"{proton_bins}_Low_Energy": np.array([1.0, 2.0, 4.0]),
+        f"{proton_bins}_Width": np.array([1.0, 2.0, 4.0]),
+        "Electron_Bins_Low_Energy": np.array([0.5, 1.0]),
+        "Electron_Bins_Width": np.array([0.5, 1.0]),
+    }
+    return particle(proton_flux, 3), particle("Electron_Flux", 2), energies
+
+
+def test_solar_orbiter_load(monkeypatch):
+    index = pd.date_range("2021-10-28 14:00", periods=4, freq="1min")
+    monkeypatch.setattr(observers, "epd_load", lambda **kwargs: epd_like_data(index, kwargs["sensor"]))
+    data = observers.SolarOrbiter().load("ept", index[0], index[-1], "sun", "path")
+    assert list(data) == ["protons", "electrons"]
+    assert data["protons"].flux.columns.tolist() == [0, 1, 2]
+    assert data["protons"].flux[2].tolist() == epd_like_data(index, "ept")[0][("Ion_Flux", "Ion_Flux_2")].tolist()
+    assert data["electrons"].energies.loc[1].tolist() == [1.0, 1.0]
+
+
+def test_data_from_the_observer(monkeypatch):
+    # the observer data become the columns of the analysis, e.g. H_Flux_2 for proton channel 2
+    index = pd.date_range("2021-10-28 14:00", periods=20, freq="1min")
+    monkeypatch.setattr(observers, "epd_load", lambda **kwargs: epd_like_data(index, kwargs["sensor"]))
+    v = make_vda(date_ranges=[(index[0], index[-1])], resample_frequency="5min", viewings=["sun", "north"],
+                 channel_groups={"protons": {"HET/protons Channel 1": {"sensor": "het", "channels": [1, 2]}}})
+    v.construct_times_df()
+    v.construct_energies_df()
+    assert v.df_energies.loc[("het", "H_Flux_2")].tolist() == [4.0, 4.0, 8.0]
+    assert v.df_energies.loc[("ept", "Electron_Flux_1"), "High Energy"] == 2.0
+    v.construct_particles_df()
+    assert v.df_data.attrs["observer"] == "solo"
+    assert v.df_data.columns.tolist() == [("het", "protons", viewing, "H_Flux", f"H_Flux_{c}")
+                                          for viewing in ("sun", "north") for c in range(3)]
+    assert len(v.df_data) == 4
+
+
+def test_unknown_observer():
+    with pytest.raises(ValueError, match="Unknown observer 'other'"):
+        VDA_parameters(observer="other")
+    p = VDA_parameters()
+    with pytest.raises(ValueError, match="Unknown observer 'other'"):
+        p.observer = "other"
+
+
 # ---------------------------------------------------------------- onset selection
 
 def vda_with_onset_options(viewings):
@@ -326,7 +403,7 @@ def vda_with_onsets(onsets):
 
 @pytest.fixture
 def fixed_spacecraft_distance(monkeypatch):
-    monkeypatch.setattr(analysis.spice, "get_body", lambda *args, **kwargs: FixedDistance())
+    monkeypatch.setattr(observers.SolarOrbiter, "distance", lambda self, time: FixedDistance.distance)
     return (FixedDistance.distance / const.c).to(u.s).value
 
 
@@ -436,3 +513,4 @@ def test_default_channel_groups():
         "HET/electrons Channel 2": {"sensor": "het", "channels": [2, 3]},
     }
     assert p.sensors_particles == {"het": ["protons", "electrons"]}
+    assert p.viewings == ["sun"]
