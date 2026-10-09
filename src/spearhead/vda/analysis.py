@@ -444,7 +444,10 @@ class VDA:
         bg_start: int | datetime = 0,
         bg_end: int | datetime = 12,
     ) -> tuple:
-        """Returns:
+        """The onset is the last point before the first of n consecutive points above the threshold
+        (as the Poisson-CUSUM method of pyonset).
+
+        Returns:
 
         1. Onset time or None if no event detected
         2. Background start
@@ -457,14 +460,17 @@ class VDA:
         onset_time = None
 
         streak = 0
+        previous = None
         for index, value in series.items():
             if value > threshold:
                 streak += 1
                 if onset_time is None:
-                    onset_time = index
+                    # the first point of the series has no point before it
+                    onset_time = index if previous is None else previous
             else:
                 streak = 0
                 onset_time = None
+            previous = index
 
             if streak >= n:
                 break

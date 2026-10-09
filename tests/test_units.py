@@ -47,7 +47,8 @@ def intensity_series(rise_at=30, spike_at=None, n_points=60):
 def test_onset_detection_sigma_finds_rise():
     series = intensity_series(rise_at=30)
     onset, bg_start, bg_end, method_specific = VDA(VDA_parameters())._onset_detection_sigma(series, 3, 3, 0, 12)
-    assert onset == series.index[30]
+    # the last point before the first point above the threshold
+    assert onset == series.index[29]
     assert (bg_start, bg_end) == (series.index[0], series.index[12])
     assert method_specific["bg_level"] == pytest.approx(series.iloc[:13].mean())
     assert method_specific["threshold"] == pytest.approx(series.iloc[:13].mean() + 3 * series.iloc[:13].std())
@@ -56,13 +57,21 @@ def test_onset_detection_sigma_finds_rise():
 def test_onset_detection_sigma_needs_consecutive_points():
     series = intensity_series(rise_at=40, spike_at=25)
     onset, *_ = VDA(VDA_parameters())._onset_detection_sigma(series, 3, 3, 0, 12)
-    assert onset == series.index[40]
+    assert onset == series.index[39]
 
 
 def test_onset_detection_sigma_without_onset():
     series = intensity_series(rise_at=None)
     onset, *_ = VDA(VDA_parameters())._onset_detection_sigma(series, 3, 3, 0, 12)
     assert onset is None
+
+
+def test_onset_detection_sigma_rise_at_the_first_point():
+    # without a point before the rise, the onset is its first point
+    series = intensity_series(rise_at=None)
+    series.iloc[:3] = 10.0
+    onset, *_ = VDA(VDA_parameters())._onset_detection_sigma(series, 3, 3, 20, 40)
+    assert onset == series.index[0]
 
 
 def test_onset_detection_sigma_background_as_times():

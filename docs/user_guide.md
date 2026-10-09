@@ -65,10 +65,12 @@ A warning is shown for background windows outside the data of the event, or with
 
 ## Onset determination
 
-The onset of each grouped channel and viewing is determined after the background window of its event, with one of the methods:
+The onset of each grouped channel and viewing is determined with the background window of its event, with one of the methods:
 
-- **Sigma threshold** (`sigma`): the onset is the first of `n` consecutive points above the threshold, the background mean plus `s` standard deviations of the background.
-- **Poisson-CUSUM** (`poisson_cusum`): the Poisson-CUSUM method of [pyonset](https://github.com/Christian-Palmroos/PyOnset). The intensities are standardized with the background mean and standard deviation, and the onset is found when the CUSUM function stays above its threshold for `cusum_minutes` (converted to data points with the cadence of the data). `sigma_multiplier` sets μd, the background mean plus `sigma_multiplier` standard deviations, used for the k parameter of the CUSUM function. As in pyonset, the onset is the last point before the CUSUM function first exceeds its threshold.
+- **Sigma threshold** (`sigma`): the threshold is the background mean plus `s` standard deviations of the background, and the onset is found when `n` consecutive points are above it.
+- **Poisson-CUSUM** (`poisson_cusum`): the Poisson-CUSUM method of [pyonset](https://github.com/Christian-Palmroos/PyOnset). The intensities are standardized with the background mean and standard deviation, and the onset is searched after the background window: it is found when the CUSUM function stays above its threshold for `cusum_minutes` (converted to data points with the cadence of the data). `sigma_multiplier` sets μd, the background mean plus `sigma_multiplier` standard deviations, used for the k parameter of the CUSUM function.
+
+With both methods, the onset is the last point before the rise: before the first of the `n` points above the threshold (Sigma threshold), or before the CUSUM function first exceeds its threshold (Poisson-CUSUM, as in pyonset).
 
 The plots of the interactive onset selection show the background level and the threshold (Sigma threshold) or μd (Poisson-CUSUM), and their values. Changing the method sets its parameters to their defaults.
 
