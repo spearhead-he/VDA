@@ -1,12 +1,12 @@
-"""Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events with Solar Orbiter EPD data.
+"""Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events.
 
 The VDA class performs the steps of the analysis:
 - events: data ranges and background windows, from an events file or datetime ranges
-- data: download (or load) of the EPD (HET, EPT) intensities, resampling and grouping of the energy channels
+- data: download (or load) of the intensities of the observer, resampling and grouping of the energy channels
 - onsets: onset times of each grouped channel and viewing, and the selection of the ones used for the fit
 - VDA fit: release time and apparent path length of each event
 
-Its parameters are in conf.py and its plots in views.py.
+Its parameters are in conf.py, the observers (spacecraft) in observers.py and its plots in views.py.
 """
 import numpy as np
 import pandas as pd
@@ -19,10 +19,9 @@ from math import sqrt
 from os import getcwd
 from datetime import datetime, timedelta
 
-from sunpy.coordinates import spice
-from sunpy.data import cache
-from solo_epd_loader import epd_load
 from pyonset import onset_determination
+
+from .observers import OBSERVERS
 
 
 class VDA:
@@ -64,23 +63,27 @@ class VDA:
     ELECTRON_COLUMN_PREFIX = "Electron_Flux"
     PARTICLE_COLUMN_PREFIX = {"protons": PROTON_COLUMN_PREFIX, "electrons": ELECTRON_COLUMN_PREFIX}
 
-    # Flux column names of the loaded data per sensor and particle
-    RAW_FLUX_COLUMN = {
-        "het": {"protons": "H_Flux", "electrons": "Electron_Flux"},
-        "ept": {"protons": "Ion_Flux", "electrons": "Electron_Flux"},
-    }
-
-    # Energy bins keys of the loaded data per sensor and particle
-    RAW_ENERGY_BINS_COLUMN = {
-        "het": {"protons": "H_Bins", "electrons": "Electron_Bins"},
-        "ept": {"protons": "Ion_Bins", "electrons": "Electron_Bins"},
-    }
-
     ############### VDA ###############
     M_REST = {"protons": 938.27, "electrons": 0.511}
 
-    def _epd_load(self, *args, **kwargs):
-        return epd_load(*args, **kwargs)
+    @property
+    def observer(self):
+        return OBSERVERS[self.parameters.observer]
+
+    def _channel_column(self, particle, channel) -> str:
+        """Column name of the channel number in the data, e.g. H_Flux_12"""
+        return f"{self.PARTICLE_COLUMN_PREFIX[particle]}_{channel}"
+
+    def _load_observer_data(self, sensor, startdate, enddate, viewing) -> dict:
+        """Data of each particle of the sensor, with the channel column names of the data"""
+        data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH)
+        return {
+            particle: (
+                particle_data.flux.rename(columns=lambda c: self._channel_column(particle, c)),
+                particle_data.energies.rename(index=lambda c: self._channel_column(particle, c)),
+            )
+            for particle, particle_data in data.items()
+        }
 
     def _check_times_file_columns(self, filepath: str, columns: pd.Index) -> None:
         layouts = (self.REFERENCE_TIMES_FILE_LAYOUT,) + self.DATE_RANGE_FILE_LAYOUTS
@@ -251,32 +254,13 @@ class VDA:
         for sensor, particles in self.parameters.AVAILABLE_SENSORS_PARTICLES.items():
             if len(particles) == 0:
                 continue
-            df_protons, df_electrons, energies = self._epd_load(
-                sensor=sensor,
-                level="l2",
-                startdate=startdate,
-                enddate=enddate,
-                viewing="sun",
-                path=self.DATA_PATH,
-                autodownload=True,
-            )
+            # the energy bins are the same in all viewings
+            data = self._load_observer_data(sensor, startdate, enddate, self.observer.VIEWINGS[0])
             df_particles = []
-            for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
+            for particle, (_, df_energies) in data.items():
                 if particle not in particles:
                     continue
-                particle_prefix = self.PARTICLE_COLUMN_PREFIX[particle]
-                df_particle = df_particle.rename(
-                    lambda x: x.replace(self.RAW_FLUX_COLUMN[sensor][particle], particle_prefix),
-                    axis="columns",
-                )
-                energy_bins = self.RAW_ENERGY_BINS_COLUMN[sensor][particle]
-                df_energies = pd.DataFrame(
-                    {
-                        "Low Energy": energies[f"{energy_bins}_Low_Energy"],
-                        "Bin Width": energies[f"{energy_bins}_Width"],
-                    },
-                    index=df_particle[particle_prefix].columns,
-                )
+                df_energies = df_energies.copy()
                 df_energies["High Energy"] = df_energies["Low Energy"] + df_energies["Bin Width"]
                 df_particles.append(df_energies)
             df_sensors[sensor] = pd.concat(df_particles)
@@ -312,22 +296,12 @@ class VDA:
                     continue
                 
                 for viewing in self.parameters.viewings:
-                    df_protons, df_electrons, _ = self._epd_load(
-                        sensor=sensor,
-                        level="l2",
-                        startdate=row[self.START_TIME_COLNAME],
-                        enddate=row[self.END_TIME_COLNAME],
-                        viewing=viewing,
-                        path=self.DATA_PATH,
-                        autodownload=True,
+                    data = self._load_observer_data(
+                        sensor, row[self.START_TIME_COLNAME], row[self.END_TIME_COLNAME], viewing
                     )
-                    for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
+                    for particle, (df_particle, _) in data.items():
                         if particle not in particles:
                             continue
-                        flux_cols_name = self.RAW_FLUX_COLUMN[sensor][particle]
-                        df_particle = df_particle[
-                            [c for c in df_particle.columns if c[0] == flux_cols_name]
-                        ]
                         df_particle = df_particle[
                             (df_particle.index >= row[self.START_TIME_COLNAME])
                             & (df_particle.index <= row[self.END_TIME_COLNAME])
@@ -339,13 +313,7 @@ class VDA:
                             df_particle.index = df_particle.index.floor("min")
                         df_particle = pd.concat(
                             [df_particle],
-                            keys=[(sensor, particle, viewing)],
-                            axis="columns",
-                        )
-                        df_particle = df_particle.rename(
-                            lambda x: x.replace(
-                                flux_cols_name, self.PARTICLE_COLUMN_PREFIX[particle]
-                            ),
+                            keys=[(sensor, particle, viewing, self.PARTICLE_COLUMN_PREFIX[particle])],
                             axis="columns",
                         )
                         df_row = pd.concat([df_row, df_particle], axis="columns")
@@ -367,6 +335,15 @@ class VDA:
             self.parameters.resample_frequency = saved
             print(f"Resample frequency set to {describe(saved)}, the one of the loaded data (instead of {describe(current)})")
 
+    def _check_saved_observer(self) -> None:
+        # data saved before the observer was recorded are Solar Orbiter data
+        saved = self.df_data.attrs.get("observer", "solo")
+        if saved != self.parameters.observer:
+            raise ValueError(
+                f"The data of {self.parameters.load_data_filepath} are data of the {saved!r} observer, "
+                f"but parameters.observer is {self.parameters.observer!r}"
+            )
+
     def construct_particles_df(self):
         """Loads the data from parameters.load_data_filepath, or downloads them if it is empty.
 
@@ -374,10 +351,12 @@ class VDA:
         """
         if self.parameters.load_data_filepath:
             self.df_data = pd.read_pickle(self.parameters.load_data_filepath)
+            self._check_saved_observer()
             self._use_saved_resample_frequency()
         else:
             self.df_data = self._download_data()
-            # saved with the data, so that loaded data are used with their resample frequency
+            # saved with the data, so that loaded data are used with their observer and resample frequency
+            self.df_data.attrs["observer"] = self.parameters.observer
             self.df_data.attrs["resample_frequency"] = self.parameters.resample_frequency
         if self.parameters.save_data_filepath:
             self.df_data.to_pickle(self.parameters.save_data_filepath)
@@ -677,25 +656,8 @@ class VDA:
             return self.df_channels_chars
 
     def define_spacecraft_parameters(self):
-        kernel_urls = [
-            "ck/solo_ANC_soc-sc-fof-ck_20180930-21000101_V03.bc",
-            "ck/solo_ANC_soc-stix-ck_20180930-21000101_V03.bc",
-            "ck/solo_ANC_soc-flown-att_20221011T142135-20221012T141817_V01.bc",
-            "fk/solo_ANC_soc-sc-fk_V09.tf",
-            "fk/solo_ANC_soc-sci-fk_V08.tf",
-            "ik/solo_ANC_soc-stix-ik_V02.ti",
-            "lsk/naif0012.tls",
-            "pck/pck00010.tpc",
-            "sclk/solo_ANC_soc-sclk_20231015_V01.tsc",
-            "spk/de421.bsp",
-            "spk/solo_ANC_soc-orbit-stp_20200210-20301120_280_V1_00288_V01.bsp",
-        ]
-        kernel_urls = [f"https://spiftp.esac.esa.int/data/SPICE/SOLAR-ORBITER/kernels/{url}"
-                    for url in kernel_urls]
-
-        kernel_files = [cache.download(url) for url in kernel_urls]
-
-        spice.initialize(kernel_files)
+        """Prepares the Sun-observer distance of the VDA fit (e.g. loads the SPICE kernels of the observer)"""
+        self.observer.initialize_position()
 
     @staticmethod
     def format_timedelta(td) -> str:
@@ -728,12 +690,7 @@ class VDA:
             # onset times are fitted in seconds from the event start
             t0 = self.df_times.loc[index_event][self.START_TIME_COLNAME].to_pydatetime()
             t_sun_to_observer = (
-                spice.get_body(
-                    "Solar Orbiter",
-                    self.df_times.loc[index_event][self.START_TIME_COLNAME],
-                    spice_frame="SOLO_HEEQ"
-                )
-                .distance
+                self.observer.distance(self.df_times.loc[index_event][self.START_TIME_COLNAME])
                 / const.c
             ).to(u.s).value
             for i, row in self.parameters.selected_onsets.loc[index_event].iterrows():
