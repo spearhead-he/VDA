@@ -12,7 +12,9 @@ OBSERVERS holds the available observers by name, the values of VDA_parameters.ob
 import os
 from typing import NamedTuple
 
+import numpy as np
 import pandas as pd
+from seppy.loader.psp import psp_isois_load
 from seppy.loader.stereo import stereo_load
 from sunpy.coordinates import get_horizons_coord, spice
 from sunpy.data import cache
@@ -52,8 +54,12 @@ class Observer:
     VIEWINGS: tuple
     SENSOR_VIEWINGS: dict
     DEFAULT_VIEWINGS: tuple
+    # Descriptions of viewings whose names do not say their direction, shown in the parameters form
+    VIEWING_DESCRIPTIONS: dict = {}
     # Default grouped channels: {particle: {sensor: [[channel numbers], ...]}}
     DEFAULT_CHANNEL_GROUPS: dict
+    # Name of the observer in JPL Horizons, for the default distance()
+    HORIZONS_NAME: str | None = None
 
     def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
         """Returns the data of the particles of the sensor (by default all of them)"""
@@ -63,8 +69,8 @@ class Observer:
         """Prepares distance(), e.g. by loading the SPICE kernels"""
 
     def distance(self, time):
-        """Returns the Sun-observer distance (astropy Quantity) at the time"""
-        raise NotImplementedError
+        """Returns the Sun-observer distance (astropy Quantity) at the time, by default from JPL Horizons"""
+        return get_horizons_coord(self.HORIZONS_NAME, time).radius
 
 
 class SolarOrbiter(Observer):
@@ -200,6 +206,7 @@ class StereoA(Observer):
     VIEWINGS = ("sun", "asun", "north", "south", "omni")
     SENSOR_VIEWINGS = {"het": ("omni",), "sept": ("sun", "asun", "north", "south")}
     DEFAULT_VIEWINGS = ("sun", "omni")
+    HORIZONS_NAME = "STEREO-A"
 
     DEFAULT_CHANNEL_GROUPS = {
         "protons": {"het": default_groups(CHANNELS["het"]["protons"], "protons")},
@@ -253,9 +260,71 @@ class StereoA(Observer):
                 data[particle] = self._particle_data(df[columns], meta[f"channels_dict_df_{species}"])
         return data
 
-    def distance(self, time):
-        return get_horizons_coord("STEREO-A", time).radius
+
+class ParkerSolarProbe(Observer):
+    name = "psp"
+    label = "Parker Solar Probe"
+
+    # IMPACT/EPI-Hi HET
+    SENSORS_PARTICLES = {"het": ("protons", "electrons")}
+
+    # the proton channels 0-2 and 12-14 have no data
+    CHANNELS = {
+        "het": {
+            "protons": tuple(range(3, 12)),
+            "electrons": tuple(range(19)),
+        },
+    }
+
+    # apertures A and B: the particle flow directions of the data (HET_A_RTN, HET_B_RTN) are about +R and -R,
+    # close to the nominal Parker spiral (HET_A_SA, HET_B_SA)
+    VIEWINGS = ("A", "B")
+    SENSOR_VIEWINGS = {"het": VIEWINGS}
+    DEFAULT_VIEWINGS = ("A",)
+    VIEWING_DESCRIPTIONS = {
+        "A": "sunward, as the sun viewing",
+        "B": "anti-sunward, as the asun viewing",
+    }
+    HORIZONS_NAME = "Parker Solar Probe"
+
+    DEFAULT_CHANNEL_GROUPS = {
+        "protons": {"het": default_groups(CHANNELS["het"]["protons"], "protons")},
+        "electrons": {"het": default_groups(CHANNELS["het"]["electrons"], "electrons")},
+    }
+
+    DATASET = "PSP_ISOIS-EPIHI_L2-HET-RATES60"
+    # Energy keys and data columns of each particle. The electrons have count rates, not fluxes
+    ENERGY_KEY = {"protons": "H", "electrons": "Electrons"}
+    DATA_COLUMN = {"protons": "H_Flux", "electrons": "Electrons_Rate"}
+
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        path = os.path.join(path, "psp")
+        os.makedirs(path, exist_ok=True)
+        df, energies = psp_isois_load(self.DATASET, startdate, enddate, path=path)
+        if len(df) == 0:
+            raise ValueError(f"No {self.label} EPI-Hi HET data from {startdate} to {enddate}")
+        data = {}
+        for particle in particles or self.SENSORS_PARTICLES[sensor]:
+            channels = list(self.CHANNELS[sensor][particle])
+            key = self.ENERGY_KEY[particle]
+            delta_minus = np.asarray(energies[f"{key}_ENERGY_DELTAMINUS"])[channels]
+            width = delta_minus + np.asarray(energies[f"{key}_ENERGY_DELTAPLUS"])[channels]
+            flux = df[[f"{viewing}_{self.DATA_COLUMN[particle]}_{c}" for c in channels]].set_axis(channels, axis="columns")
+            if particle == "electrons":
+                # count rates per MeV, proportional to the intensity
+                flux = flux / width
+            data[particle] = ParticleData(
+                flux,
+                pd.DataFrame(
+                    {
+                        "Low Energy": np.asarray(energies[f"{key}_ENERGY"])[channels] - delta_minus,
+                        "Bin Width": width,
+                    },
+                    index=channels,
+                ),
+            )
+        return data
 
 
-OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA())}
+OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe())}
 DEFAULT_OBSERVER = "solo"

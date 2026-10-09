@@ -33,10 +33,16 @@ The data of one spacecraft (observer) are analysed at a time:
 |---|---|---|---|
 | Solar Orbiter | EPD/HET and EPD/EPT (protons, electrons) | sun, asun, north, south, omni | SPICE kernels |
 | STEREO-A | IMPACT/HET (protons, electrons) and IMPACT/SEPT (ions, shown as protons, and electrons) | HET: omni; SEPT: sun, asun, north, south | JPL Horizons |
+| Parker Solar Probe | ISOIS/EPI-Hi HET (protons, electrons) | A (sunward, as sun), B (anti-sunward, as asun) | JPL Horizons |
 
 Each sensor uses the selected viewings it has: with STEREO-A, HET uses omni and SEPT the others, so the grouped channels of a sensor need at least one of its viewings selected. The distance from the Sun gives the light travel time of the VDA (Extra Time); JPL Horizons needs an internet connection.
 
-The default grouped channels of STEREO-A are its consecutive HET channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
+The default grouped channels of STEREO-A and Parker Solar Probe are their consecutive HET channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
+
+Parker Solar Probe:
+- the data are the 1-minute EPI-Hi HET rates (`PSP_ISOIS-EPIHI_L2-HET-RATES60`), available from mid-2021
+- the proton channels are 3 to 11 (11.3-53.8 MeV): the other channels of the data are empty
+- the electron data are count rates (the electron fluxes of the data have gaps during events), divided by the width of the channel (counts s⁻¹ MeV⁻¹). They are proportional to the intensity, but their values are not intensities
 
 ## Parameters
 

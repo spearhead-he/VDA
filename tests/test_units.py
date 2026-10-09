@@ -380,6 +380,40 @@ def test_stereo_a_without_data(monkeypatch, tmp_path):
         observers.StereoA().load("het", "2021-10-28 14:00", "2021-10-28 15:00", "omni", str(tmp_path))
 
 
+def psp_like_data(dataset, startdate, enddate, path=None):
+    """Data as returned by psp_isois_load for EPI-Hi HET: 15 proton and 19 electron channels per aperture"""
+    index = pd.date_range("2021-10-28 14:00", periods=20, freq="1min")
+    columns = {f"{aperture}_{column}_{c}": 10.0 if aperture == "A" else 20.0
+               for aperture in ("A", "B")
+               for column, n_channels in (("H_Flux", 15), ("Electrons_Rate", 19))
+               for c in range(n_channels)}
+    energies = {}
+    for key, n_channels in (("H", 15), ("Electrons", 19)):
+        energies[f"{key}_ENERGY"] = np.arange(1.0, n_channels + 1)
+        energies[f"{key}_ENERGY_DELTAMINUS"] = np.full(n_channels, 0.25)
+        energies[f"{key}_ENERGY_DELTAPLUS"] = np.full(n_channels, 0.25)
+    return pd.DataFrame(columns, index=index), energies
+
+
+def test_parker_solar_probe_load(monkeypatch, tmp_path):
+    monkeypatch.setattr(observers, "psp_isois_load", psp_like_data)
+    data = observers.ParkerSolarProbe().load("het", "2021-10-28 14:00", "2021-10-28 15:00", "B", str(tmp_path))
+    # the proton channels without data are left out
+    assert data["protons"].flux.columns.tolist() == list(range(3, 12))
+    assert data["protons"].energies.loc[3].tolist() == [3.75, 0.5]
+    assert (data["protons"].flux == 20.0).all().all()
+    # the electron count rates are divided by the bin width
+    assert data["electrons"].flux.columns.tolist() == list(range(19))
+    assert (data["electrons"].flux == 40.0).all().all()
+
+
+def test_parker_solar_probe_default_groups():
+    p = VDA_parameters(observer="psp")
+    assert p.viewings == ["A"]
+    assert [g["channels"] for g in p.channel_groups["protons"].values()] == [[3, 4, 5], [6, 7, 8], [9, 10, 11]]
+    assert [g["channels"] for g in p.channel_groups["electrons"].values()][-1] == [16, 17, 18]
+
+
 def test_viewings_of_each_sensor(monkeypatch):
     # STEREO-A HET has only the omni viewing, SEPT has no omni viewing
     monkeypatch.setattr(observers, "stereo_load", stereo_like_data)

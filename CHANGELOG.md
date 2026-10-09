@@ -9,6 +9,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 - Observers: the spacecraft of the analysis is the parameter `observer` (for now only `"solo"`, Solar Orbiter). The module `spearhead.vda.observers` describes each observer (sensors, particles, energy channels, viewings, default grouped channels), loads its data and gives its distance from the Sun.
 - STEREO-A observer (`observer = "sta"`): IMPACT/HET (omni viewing) and IMPACT/SEPT (sun, asun, north and south viewings), loaded with seppy. Its distance from the Sun is from JPL Horizons. Its default grouped channels are the consecutive HET channels, in groups of three for protons and two for electrons (a single channel left at the end joins the previous group). The observer is selected in the Data tab of the parameters form.
+- Parker Solar Probe observer (`observer = "psp"`): ISOIS/EPI-Hi HET, with the viewings A (sunward) and B (anti-sunward), from the 1-minute rates (`PSP_ISOIS-EPIHI_L2-HET-RATES60`) loaded with seppy. The proton channels are 3 to 11 (the others have no data), and the electron data are count rates divided by the channel width. Its distance from the Sun is from JPL Horizons.
 - Viewings of each sensor: each sensor uses the selected viewings it has (`VDA.sensor_viewings(sensor)`), also in the plots. A sensor of the grouped channels without any selected viewing raises an error.
 - Saved data (`save_data_filepath`) include their observer, and loading the data of another observer raises an error. Data saved before are Solar Orbiter data.
 

@@ -266,11 +266,15 @@ class VDA_notebook:
             checkboxes.append(w)
         wgt_checkboxes = widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})]
                                       + checkboxes)
+        notes = []
+        descriptions = self.vda.observer.VIEWING_DESCRIPTIONS
+        if descriptions:
+            notes.append(self._note("; ".join(f"{viewing}: {text}" for viewing, text in descriptions.items())))
         sensor_viewings = self.vda.observer.SENSOR_VIEWINGS
-        if all(set(v) == set(self.parameters.AVAILABLE_VIEWINGS) for v in sensor_viewings.values()):
-            return wgt_checkboxes
-        text = "; ".join(f"{sensor.upper()}: {', '.join(v)}" for sensor, v in sensor_viewings.items())
-        return widgets.VBox([wgt_checkboxes, self._note(f"Viewings of each sensor: {text}")])
+        if any(set(v) != set(self.parameters.AVAILABLE_VIEWINGS) for v in sensor_viewings.values()):
+            text = "; ".join(f"{sensor.upper()}: {', '.join(v)}" for sensor, v in sensor_viewings.items())
+            notes.append(self._note(f"Viewings of each sensor: {text}"))
+        return widgets.VBox([wgt_checkboxes, *notes]) if notes else wgt_checkboxes
 
     def _select_viewing(self, viewing, selected):
         """Adds or removes a viewing. The checkboxes keep the order of AVAILABLE_VIEWINGS"""
