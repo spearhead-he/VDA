@@ -9,6 +9,6 @@ Modules:
 from .analysis import VDA
 from .conf import OnsetSelection, VDA_parameters
 
-__version__ = "0.5.0.dev0"
+__version__ = "0.5.0"
 
 __all__ = ["VDA", "VDA_parameters", "OnsetSelection", "__version__"]

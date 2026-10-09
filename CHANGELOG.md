@@ -2,12 +2,10 @@
 
 All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.5.0] - 2026-10-09
 
 ### Added
-- Installable package `spearhead-vda` (`pyproject.toml`): `pip install -e ".[notebook]"` from the folder of the tool, or `pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA"`. The extras are `notebook` (Jupyter and ipywidgets) and `test`. `requirements.txt` installs the package with the notebook extra. The notebook also runs from the folder of the tool without installing the package.
-- `spearhead.vda.__version__`.
-- `spearhead.vda` package: `VDA`, `VDA_parameters` and `OnsetSelection` are imported from `spearhead.vda`, and the modules are `analysis` (previously `vda.py`), `conf` (previously `vda_tool_configuration.py`), `views` and `notebook` (previously `vda_notebook.py`).
+- Installable Python package `spearhead-vda`, imported as `spearhead.vda`: `VDA`, `VDA_parameters` and `OnsetSelection` are imported from `spearhead.vda`, and the modules are `analysis` (previously `vda.py`), `conf` (previously `vda_tool_configuration.py`), `views` and `notebook` (previously `vda_notebook.py`). It is installed with `pip install -e ".[notebook]"` from the folder of the tool (or `pip install -r requirements.txt`), or `pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA@v0.5.0"`. The extras are `notebook` (Jupyter and ipywidgets) and `test`. The notebook also runs from the folder of the tool without installing the package. The version is `spearhead.vda.__version__`.
 - `spearhead.vda.views` with the plots as functions that return matplotlib figures (`plot_bg`, `plot_onsets`, `plot_vda`), without displaying them. They are saved only when a filename is given.
 - `VDA.select_onsets()`: the "Use all" onset selection, without widgets.
 - `channel_groups` has the default grouped channels as its default value, so they are also used without the notebook. The channel groups widget shows the groups of `channel_groups`.
@@ -25,6 +23,13 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - `VDA.plot()`, `VDA.plot_vda()` and `VDA.plot_bg_selection()`: replaced by `VDA.compute_vda()` and the functions of `spearhead.vda.views`.
 - Parameter `default_channel_groups`: the default groups are the default value of `channel_groups`.
 - `VDA_nb_displayer`: its widgets are part of `VDA_notebook`, its `construct_energies_df()` and `select_onsets()` are replaced by `VDA.construct_energies_df()` and `VDA.select_onsets()`.
+
+### Upgrading from 0.4.0
+- Install the package once, from the folder of the tool: `pip install -r requirements.txt` (or `pip install -e ".[notebook]"`). This also updates ipykernel in existing environments, which fixes the notebook hang.
+- Imports: `from vda import VDA` becomes `from spearhead.vda import VDA`, `vda_tool_configuration` becomes `spearhead.vda.conf`, `vda_views` becomes `spearhead.vda.views` (now the plots) and `vda_notebook` becomes `spearhead.vda.notebook`.
+- `vda.plot()` becomes `vda.compute_vda()` followed by `views.plot_vda(vda, event_no)` for each event (`views.plot_bg(vda, event_no)` instead of `vda.plot_bg_selection()`).
+- `VDA_nb_displayer(vda).select_onsets()` becomes `vda.select_onsets()`. The background and interactive onset selection widgets are `VDA_notebook(vda).background_selection()` and `VDA_notebook(vda).onset_selection()`.
+- `default_channel_groups` is replaced by `channel_groups`, whose default value has the same groups.
 
 ## [0.4.0] - 2026-10-06
 
@@ -98,7 +103,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
-[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.4.0...HEAD
+[0.5.0]: https://github.com/spearhead-he/VDA/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/spearhead-he/VDA/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/spearhead-he/VDA/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/spearhead-he/VDA/compare/v0.1.0-alpha...v0.2.0
