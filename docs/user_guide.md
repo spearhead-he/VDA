@@ -35,10 +35,11 @@ The data of one spacecraft (observer) are analysed at a time:
 | STEREO-A | IMPACT/HET (protons, electrons) and IMPACT/SEPT (ions, shown as protons, and electrons) | HET: omni; SEPT: sun, asun, north, south | JPL Horizons |
 | Parker Solar Probe | ISOIS/EPI-Hi HET (protons, electrons) | A (sunward, as sun), B (anti-sunward, as asun) | JPL Horizons |
 | SOHO | ERNE-HED (protons) and COSTEP-EPHIN (electrons) | omni | JPL Horizons |
+| Wind | 3DP (protons, electrons) | omni | JPL Horizons |
 
 Each sensor uses the selected viewings it has: with STEREO-A, HET uses omni and SEPT the others, so the grouped channels of a sensor need at least one of its viewings selected. The distance from the Sun gives the light travel time of the VDA (Extra Time); JPL Horizons needs an internet connection.
 
-The default grouped channels of STEREO-A, Parker Solar Probe and SOHO are their consecutive channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
+The default grouped channels of STEREO-A, Parker Solar Probe, SOHO and Wind are their consecutive channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
 
 Parker Solar Probe:
 - the data are the 1-minute EPI-Hi HET rates (`PSP_ISOIS-EPIHI_L2-HET-RATES60`), available from mid-2021
@@ -49,6 +50,10 @@ SOHO:
 - the protons are the 1-minute ERNE-HED intensities (`SOHO_ERNE-HED_L2-1MIN`), channels 0 to 6 (13-64 MeV). Its three highest channels are not corrected and are left out, as in seppy
 - the electrons are the 1-minute EPHIN level 2 intensities (from the University of Kiel), channels 0 (E150, 0.25-0.7 MeV) and 2 (E1300). The energy range of E1300 depends on the date: 2.64-10.4 MeV before the failure mode D of EPHIN (4 October 2017), 0.67-10.4 MeV since. E300 (channel 1) is deactivated since then and E3000 (channel 3) has no data, so both are left out
 - the energy ranges of the channels are read from the first event, so an analysis with EPHIN channels cannot have events on both sides of 4 October 2017 (it raises an error): the events before and after it are analysed separately
+
+Wind:
+- the data are the omnidirectional fluxes of the 3DP solid state telescopes: protons from SST Open (`WI_SOSP_3DP`, 9 channels, about 70 keV-6.8 MeV) and electrons from SST Foil (`WI_SFSP_3DP`, 7 channels, about 27-520 keV), at about 12 s
+- the energy of each channel is its mean energy in the loaded data, with a width of 60% of it, as in seppy: the energy ranges of neighbouring channels overlap
 
 ## Parameters
 

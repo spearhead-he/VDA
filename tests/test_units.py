@@ -453,6 +453,38 @@ def test_soho_default_groups():
     assert [g["channels"] for g in p.channel_groups["electrons"].values()] == [[0, 2]]
 
 
+def wind_like_data(dataset, startdate, enddate, resample=None, path=None):
+    """Data as returned by wind3dp_load for the omnidirectional fluxes: 9 proton or 7 electron channels"""
+    n_channels = {"WI_SOSP_3DP": 9, "WI_SFSP_3DP": 7}[dataset]
+    index = pd.date_range("2021-10-28 14:00", periods=20, freq="12s")
+    columns = {"TIME": 0.0, **{f"FLUX_{c}": 1e-6 * (c + 1) for c in range(n_channels)},
+               **{f"ENERGY_{c}": 1e5 * (c + 1) for c in range(n_channels)}}
+    mean_e = np.arange(1, n_channels + 1) * 0.1
+    energies = pd.DataFrame({"lower_E": 0.7 * mean_e, "DE": 0.6 * mean_e},
+                            index=[f"ENERGY_{c}" for c in range(n_channels)])
+    return pd.DataFrame(columns, index=index), {"channels_dict_df": energies}
+
+
+def test_wind_load(monkeypatch, tmp_path):
+    monkeypatch.setattr(observers, "wind3dp_load", wind_like_data)
+    data = observers.Wind().load("3dp", "2021-10-28 14:00", "2021-10-28 15:00", "omni", str(tmp_path))
+    assert data["protons"].flux.columns.tolist() == list(range(9))
+    assert data["electrons"].flux.columns.tolist() == list(range(7))
+    # fluxes per eV become intensities per MeV
+    assert data["electrons"].flux[2].tolist() == pytest.approx([3.0] * 20)
+    assert data["protons"].energies.loc[1].tolist() == pytest.approx([0.14, 0.12])
+    only_electrons = observers.Wind().load("3dp", "2021-10-28 14:00", "2021-10-28 15:00", "omni", str(tmp_path),
+                                           particles=["electrons"])
+    assert list(only_electrons) == ["electrons"]
+
+
+def test_wind_default_groups():
+    p = VDA_parameters(observer="wind")
+    assert p.viewings == ["omni"]
+    assert [g["channels"] for g in p.channel_groups["protons"].values()] == [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+    assert [g["channels"] for g in p.channel_groups["electrons"].values()] == [[0, 1], [2, 3], [4, 5, 6]]
+
+
 @pytest.mark.parametrize("date_ranges, channel_groups, error", [
     # before and after the failure mode D of EPHIN
     ([(datetime(2012, 5, 17), datetime(2012, 5, 18)), (datetime(2021, 10, 28), datetime(2021, 10, 29))], None, True),

@@ -18,6 +18,7 @@ import pandas as pd
 from seppy.loader.psp import psp_isois_load
 from seppy.loader.soho import soho_load
 from seppy.loader.stereo import stereo_load
+from seppy.loader.wind import wind3dp_load
 from sunpy.coordinates import get_horizons_coord, spice
 from sunpy.data import cache
 from solo_epd_loader import epd_load
@@ -391,5 +392,54 @@ class Soho(Observer):
         )}
 
 
-OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe(), Soho())}
+class Wind(Observer):
+    name = "wind"
+    label = "Wind"
+
+    # 3DP solid state telescopes: SST Open (protons) and SST Foil (electrons), omnidirectional fluxes
+    SENSORS_PARTICLES = {"3dp": ("protons", "electrons")}
+
+    CHANNELS = {
+        "3dp": {
+            "protons": tuple(range(9)),
+            "electrons": tuple(range(7)),
+        },
+    }
+
+    VIEWINGS = ("omni",)
+    SENSOR_VIEWINGS = {"3dp": VIEWINGS}
+    DEFAULT_VIEWINGS = ("omni",)
+    HORIZONS_NAME = "Wind"
+
+    DEFAULT_CHANNEL_GROUPS = {
+        "protons": {"3dp": default_groups(CHANNELS["3dp"]["protons"], "protons")},
+        "electrons": {"3dp": default_groups(CHANNELS["3dp"]["electrons"], "electrons")},
+    }
+
+    DATASET = {"protons": "WI_SOSP_3DP", "electrons": "WI_SFSP_3DP"}
+
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        path = os.path.join(path, "wind")
+        os.makedirs(path, exist_ok=True)
+        data = {}
+        for particle in particles or self.SENSORS_PARTICLES[sensor]:
+            df, meta = wind3dp_load(self.DATASET[particle], startdate, enddate, resample=None, path=path)
+            if len(df) == 0:
+                raise ValueError(f"No {self.label} 3DP {particle} data from {startdate} to {enddate}")
+            channels = list(self.CHANNELS[sensor][particle])
+            # fluxes per eV, as intensities per MeV
+            flux = df[[f"FLUX_{c}" for c in channels]].set_axis(channels, axis="columns") * 1e6
+            # mean energies of the loaded data, with a width of 60% of the mean energy (as in seppy)
+            energies = meta["channels_dict_df"].loc[[f"ENERGY_{c}" for c in channels]]
+            data[particle] = ParticleData(
+                flux,
+                pd.DataFrame(
+                    {"Low Energy": energies["lower_E"].to_numpy(), "Bin Width": energies["DE"].to_numpy()},
+                    index=channels,
+                ),
+            )
+        return data
+
+
+OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe(), Soho(), Wind())}
 DEFAULT_OBSERVER = "solo"
