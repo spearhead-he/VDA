@@ -19,6 +19,7 @@ dependencies = [
     "numpy>=1.24.1",
     "pandas>=1.5.3",
     "pyonset @ git+https://github.com/Christian-Palmroos/PyOnset/",
+    "seppy>=0.5.1",
     "solo-epd-loader>=0.3.7",
     "sunpy[all]>=6.0.4",
 ]

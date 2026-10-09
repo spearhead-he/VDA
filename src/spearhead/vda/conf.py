@@ -1,7 +1,8 @@
 """Parameters of the VDA analysis.
 
 VDA_parameters holds all the parameters (events, observer, data, energy channels, onset method and selection),
-with their defaults and the available options (the sensors, channels and viewings are those of the observer). Setting an unknown or removed parameter raises an error.
+with their defaults and the available options (the sensors, channels and viewings are those of the observer).
+Setting an unknown or removed parameter raises an error.
 OnsetSelection is the onset selection method.
 """
 from dataclasses import dataclass, field, fields
@@ -143,8 +144,13 @@ class VDA_parameters:
             raise AttributeError(f"The {name} parameter was removed in {version}. {replacement}")
         if name not in {f.name for f in fields(self)}:
             raise AttributeError(f"VDA_parameters has no parameter '{name}'")
-        if name == "observer" and value not in OBSERVERS:
-            raise ValueError(f"Unknown observer {value!r}. Use one of: {', '.join(OBSERVERS)}")
+        if name == "observer":
+            if value not in OBSERVERS:
+                raise ValueError(f"Unknown observer {value!r}. Use one of: {', '.join(OBSERVERS)}")
+            # the viewings and grouped channels of another observer are replaced by the defaults of the new one
+            if getattr(self, "observer", value) != value:
+                super().__setattr__("viewings", list(OBSERVERS[value].DEFAULT_VIEWINGS))
+                super().__setattr__("channel_groups", _default_channel_groups(value))
         if name == "onset_method":
             if value not in AVAILABLE_ONSET_METHODS:
                 raise ValueError(f"Unknown onset method {value!r}. Use one of: {', '.join(AVAILABLE_ONSET_METHODS)}")

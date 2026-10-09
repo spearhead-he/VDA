@@ -17,6 +17,7 @@ from sunpy import log as sunpy_log
 from . import views
 from .analysis import VDA
 from .conf import ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
+from .observers import OBSERVERS
 
 
 def _show_figure(fig) -> None:
@@ -224,8 +225,10 @@ class VDA_notebook:
 
     ############### Data tab ###############
     def _data_tab(self):
+        self._wrapper_viewings = widgets.VBox([self._viewings_widget()])
         return widgets.VBox([
-            self._section("Viewings", self._viewings_widget()),
+            self._section("Observer", self._observer_widget()),
+            self._section("Viewings", self._wrapper_viewings),
             self._section("Resampling", self._text_widget(
                 "resample_frequency", "Resample frequency:",
                 "Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling")),
@@ -235,6 +238,21 @@ class VDA_notebook:
                           self._text_widget("save_data_filepath", "Save the data to:",
                                             "Path to .pkl - Leave blank to not save the data")),
         ])
+
+    def _observer_widget(self):
+        w = widgets.Dropdown(options=[(observer.label, name) for name, observer in OBSERVERS.items()],
+                             value=self.parameters.observer,
+                             description="Spacecraft:",
+                             style=self._style)
+
+        def on_change(traitlet):
+            # the viewings and grouped channels are reset to the defaults of the new observer
+            self.parameters.observer = traitlet["new"]
+            self._wrapper_viewings.children = [self._viewings_widget()]
+            self._wrapper_channels.children = [self._channels_section()]
+
+        w.observe(on_change, names="value")
+        return w
 
     def _viewings_widget(self):
         checkboxes = []
@@ -246,7 +264,13 @@ class VDA_notebook:
             w.observe(lambda traitlet, viewing=viewing: self._select_viewing(viewing, traitlet["new"]),
                       names="value")
             checkboxes.append(w)
-        return widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})] + checkboxes)
+        wgt_checkboxes = widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})]
+                                      + checkboxes)
+        sensor_viewings = self.vda.observer.SENSOR_VIEWINGS
+        if all(set(v) == set(self.parameters.AVAILABLE_VIEWINGS) for v in sensor_viewings.values()):
+            return wgt_checkboxes
+        text = "; ".join(f"{sensor.upper()}: {', '.join(v)}" for sensor, v in sensor_viewings.items())
+        return widgets.VBox([wgt_checkboxes, self._note(f"Viewings of each sensor: {text}")])
 
     def _select_viewing(self, viewing, selected):
         """Adds or removes a viewing. The checkboxes keep the order of AVAILABLE_VIEWINGS"""
@@ -257,6 +281,10 @@ class VDA_notebook:
 
     ############### Energy channels tab ###############
     def _channels_tab(self):
+        self._wrapper_channels = widgets.VBox([self._channels_section()])
+        return self._wrapper_channels
+
+    def _channels_section(self):
         # the energy ranges of the channels are the same for all the events
         start, end = self.parameters.date_ranges[0]
         self.vda.construct_energies_df(start, end)

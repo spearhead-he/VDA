@@ -29,11 +29,11 @@ def plot_bg(vda, event_no, filename=None) -> Figure:
     # one colormap per sensor and particle, darker for the later channels of the group
     colormaps = ["Blues", "Oranges", "Greens", "Purples", "Reds", "Greys"]
     linestyles = ["-", "--", ":", "-."]
-    viewings = vda.parameters.viewings
     # zeros cannot be shown in log scale
     temp_df = vda.df_grouped.loc[event_no].replace(0, np.nan)
     for i_group, (sensor, particle, particle_prefix) in enumerate(vda._iter_sensor_particles()):
         cmap = matplotlib.colormaps[colormaps[i_group % len(colormaps)]]
+        viewings = vda.sensor_viewings(sensor)
         for i_viewing, viewing in enumerate(viewings):
             df_channels = temp_df[sensor][particle][viewing][particle_prefix]
             n_channels = len(df_channels.columns)
@@ -68,8 +68,8 @@ def plot_bg(vda, event_no, filename=None) -> Figure:
 
 
 def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selected_viewing=None, filename=None) -> Figure:
-    """Plots the detected onsets of a grouped channel of the event, one subplot per viewing"""
-    viewings = vda.parameters.viewings
+    """Plots the detected onsets of a grouped channel of the event, one subplot per viewing of its sensor"""
+    viewings = vda.sensor_viewings(sensor)
     temp_df = vda.df_grouped.loc[event_no]
     ncols = min(len(viewings), 3)
     nrows = ceil(len(viewings) / ncols)

@@ -25,7 +25,18 @@ tool.run_vda()               # results and plots
 
 Run the cells in order. If a parameter is changed, rerun the steps after it. For advanced use, `tool.vda` is the analysis object and `tool.parameters` its parameters (see [Using the VDA tool without the notebook](library.md)).
 
-*For the time being, the tool uses data from Solar Orbiter EPD (HET and EPT).*
+## Observers
+
+The data of one spacecraft (observer) are analysed at a time:
+
+| Observer | Sensors | Viewings | Distance from the Sun |
+|---|---|---|---|
+| Solar Orbiter | EPD/HET and EPD/EPT (protons, electrons) | sun, asun, north, south, omni | SPICE kernels |
+| STEREO-A | IMPACT/HET (protons, electrons) and IMPACT/SEPT (ions, shown as protons, and electrons) | HET: omni; SEPT: sun, asun, north, south | JPL Horizons |
+
+Each sensor uses the selected viewings it has: with STEREO-A, HET uses omni and SEPT the others, so the grouped channels of a sensor need at least one of its viewings selected. The distance from the Sun gives the light travel time of the VDA (Extra Time); JPL Horizons needs an internet connection.
+
+The default grouped channels of STEREO-A are its consecutive HET channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
 
 ## Parameters
 
@@ -33,6 +44,7 @@ The parameters form has five tabs:
 
 - **Events**: the events file, or the datetime ranges of the events if no file is given (see [Events](#events)). For files with reference times, the data range is set with the hours prior to and after the reference time.
 - **Data**:
+  - the observer (spacecraft). Changing it sets the viewings and the grouped channels to the defaults of the observer
   - the viewings
   - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), blank for no resampling)
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.

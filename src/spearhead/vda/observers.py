@@ -5,12 +5,16 @@ format, and gives its distance from the Sun for the light travel time:
 - load(): flux of each particle with the channel numbers as columns, and the energy bins of the channels
 - distance(): Sun-observer distance at a given time, after initialize_position()
 
+Sensors without viewings have the single viewing "omni".
+
 OBSERVERS holds the available observers by name, the values of VDA_parameters.observer.
 """
+import os
 from typing import NamedTuple
 
 import pandas as pd
-from sunpy.coordinates import spice
+from seppy.loader.stereo import stereo_load
+from sunpy.coordinates import get_horizons_coord, spice
 from sunpy.data import cache
 from solo_epd_loader import epd_load
 
@@ -22,6 +26,20 @@ class ParticleData(NamedTuple):
     energies: pd.DataFrame
 
 
+# Number of channels of the default grouped channels of each particle
+DEFAULT_GROUP_SIZE = {"protons": 3, "electrons": 2}
+
+
+def default_groups(channels, particle) -> list:
+    """Consecutive channels in groups of DEFAULT_GROUP_SIZE. A single channel left at the end joins the previous group"""
+    size = DEFAULT_GROUP_SIZE[particle]
+    groups = [list(channels[i:i + size]) for i in range(0, len(channels), size)]
+    if len(groups) > 1 and len(groups[-1]) == 1:
+        last = groups.pop()
+        groups[-1] += last
+    return groups
+
+
 class Observer:
     # Name used in VDA_parameters.observer
     name: str
@@ -30,13 +48,15 @@ class Observer:
     SENSORS_PARTICLES: dict
     # Channel numbers of each sensor and particle
     CHANNELS: dict
+    # All the viewings, and the viewings of each sensor
     VIEWINGS: tuple
+    SENSOR_VIEWINGS: dict
     DEFAULT_VIEWINGS: tuple
     # Default grouped channels: {particle: {sensor: [[channel numbers], ...]}}
     DEFAULT_CHANNEL_GROUPS: dict
 
-    def load(self, sensor, startdate, enddate, viewing, path) -> dict[str, ParticleData]:
-        """Returns the data of each particle of the sensor"""
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        """Returns the data of the particles of the sensor (by default all of them)"""
         raise NotImplementedError
 
     def initialize_position(self) -> None:
@@ -68,6 +88,7 @@ class SolarOrbiter(Observer):
     }
 
     VIEWINGS = ("sun", "asun", "north", "south", "omni")
+    SENSOR_VIEWINGS = {"het": VIEWINGS, "ept": VIEWINGS}
     DEFAULT_VIEWINGS = ("sun",)
 
     DEFAULT_CHANNEL_GROUPS = {
@@ -118,7 +139,7 @@ class SolarOrbiter(Observer):
         "spk/solo_ANC_soc-orbit-stp_20200210-20301120_280_V1_00288_V01.bsp",
     )
 
-    def load(self, sensor, startdate, enddate, viewing, path) -> dict[str, ParticleData]:
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
         df_protons, df_electrons, energies = epd_load(
             sensor=sensor,
             level="l2",
@@ -130,7 +151,7 @@ class SolarOrbiter(Observer):
         )
         data = {}
         for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
-            if particle not in self.SENSORS_PARTICLES[sensor]:
+            if particle not in (particles or self.SENSORS_PARTICLES[sensor]):
                 continue
             flux = df_particle[self.FLUX_COLUMN[sensor][particle]]
             # e.g. "H_Flux_12" is channel 12
@@ -155,5 +176,86 @@ class SolarOrbiter(Observer):
         return spice.get_body("Solar Orbiter", time, spice_frame="SOLO_HEEQ").distance
 
 
-OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(),)}
+class StereoA(Observer):
+    name = "sta"
+    label = "STEREO-A"
+
+    # the "protons" of SEPT are ions
+    SENSORS_PARTICLES = {
+        "het": ("protons", "electrons"),
+        "sept": ("protons", "electrons"),
+    }
+
+    CHANNELS = {
+        "het": {
+            "protons": tuple(range(11)),
+            "electrons": tuple(range(3)),
+        },
+        "sept": {
+            "protons": tuple(range(2, 32)),
+            "electrons": tuple(range(2, 17)),
+        },
+    }
+
+    VIEWINGS = ("sun", "asun", "north", "south", "omni")
+    SENSOR_VIEWINGS = {"het": ("omni",), "sept": ("sun", "asun", "north", "south")}
+    DEFAULT_VIEWINGS = ("sun", "omni")
+
+    DEFAULT_CHANNEL_GROUPS = {
+        "protons": {"het": default_groups(CHANNELS["het"]["protons"], "protons")},
+        "electrons": {"het": default_groups(CHANNELS["het"]["electrons"], "electrons")},
+    }
+
+    # Species of the STEREO loader per particle, and flux columns of HET
+    SPECIES = {"protons": "p", "electrons": "e"}
+    HET_FLUX_COLUMN = {"protons": "Proton_Flux", "electrons": "Electron_Flux"}
+
+    @staticmethod
+    def _particle_data(flux, channels_dict_df) -> ParticleData:
+        # e.g. "ch_12" (SEPT) or "Proton_Flux_12" (HET) is channel 12
+        flux = flux.set_axis([int(c.rsplit("_", 1)[1]) for c in flux.columns], axis="columns")
+        return ParticleData(
+            flux,
+            pd.DataFrame(
+                {
+                    "Low Energy": channels_dict_df.loc[flux.columns, "lower_E"].to_numpy(),
+                    "Bin Width": channels_dict_df.loc[flux.columns, "DE"].to_numpy(),
+                },
+                index=flux.columns,
+            ),
+        )
+
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        path = os.path.join(path, "stereo")
+        os.makedirs(path, exist_ok=True)
+        particles = particles or self.SENSORS_PARTICLES[sensor]
+
+        def no_data():
+            return ValueError(f"No {self.label} {sensor.upper()} data from {startdate} to {enddate}")
+
+        data = {}
+        if sensor == "het":
+            df, meta = stereo_load("HET", startdate, enddate, spacecraft="ahead", path=path)
+            if len(df) == 0:
+                raise no_data()
+            for particle in particles:
+                columns = [c for c in df.columns if c.startswith(f"{self.HET_FLUX_COLUMN[particle]}_")]
+                data[particle] = self._particle_data(df[columns], meta[f"channels_dict_df_{self.SPECIES[particle]}"])
+        else:
+            # SEPT has one file per species
+            for particle in particles:
+                species = self.SPECIES[particle]
+                df, meta = stereo_load("SEPT", startdate, enddate, spacecraft="ahead",
+                                       sept_species=species, sept_viewing=viewing, path=path)
+                if len(df) == 0:
+                    raise no_data()
+                columns = [c for c in df.columns if c.startswith("ch_")]
+                data[particle] = self._particle_data(df[columns], meta[f"channels_dict_df_{species}"])
+        return data
+
+    def distance(self, time):
+        return get_horizons_coord("STEREO-A", time).radius
+
+
+OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA())}
 DEFAULT_OBSERVER = "solo"

@@ -8,13 +8,16 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - Poisson-CUSUM onset determination method (`onset_method = "poisson_cusum"`), from pyonset, with the parameters `cusum_minutes` and `sigma_multiplier`. The onset plots show its background level, μd and the k and h parameters.
 
 - Observers: the spacecraft of the analysis is the parameter `observer` (for now only `"solo"`, Solar Orbiter). The module `spearhead.vda.observers` describes each observer (sensors, particles, energy channels, viewings, default grouped channels), loads its data and gives its distance from the Sun.
+- STEREO-A observer (`observer = "sta"`): IMPACT/HET (omni viewing) and IMPACT/SEPT (sun, asun, north and south viewings), loaded with seppy. Its distance from the Sun is from JPL Horizons. Its default grouped channels are the consecutive HET channels, in groups of three for protons and two for electrons (a single channel left at the end joins the previous group). The observer is selected in the Data tab of the parameters form.
+- Viewings of each sensor: each sensor uses the selected viewings it has (`VDA.sensor_viewings(sensor)`), also in the plots. A sensor of the grouped channels without any selected viewing raises an error.
 - Saved data (`save_data_filepath`) include their observer, and loading the data of another observer raises an error. Data saved before are Solar Orbiter data.
 
 ### Changed
 - The onset of the Sigma threshold method is the last point before the first of the `n` points above the threshold (previously the first point above it), as in the Poisson-CUSUM method of pyonset. The onsets, and so the release times, are one data point earlier (e.g. 5 minutes with the default resampling); the apparent path lengths are unchanged when all the onsets move by the same time.
 - Setting `onset_method` sets `onset_method_parameters` to the defaults of the method, and the parameters form shows the parameters of the selected method. The onset methods are listed with their names (Sigma threshold, Poisson-CUSUM).
 - Parameters of another onset method raise an error when the onsets are calculated.
-- `viewings` and `channel_groups` default to `None`, replaced by the default viewings and grouped channels of the observer (unchanged for Solar Orbiter).
+- `viewings` and `channel_groups` default to `None`, replaced by the default viewings and grouped channels of the observer (unchanged for Solar Orbiter). Setting `observer` sets them to the defaults of the new observer.
+- `seppy` (0.5.1 or newer) is a requirement again, for the STEREO-A data (it was already installed by pyonset).
 - `VDA_parameters.AVAILABLE_SENSORS_PARTICLES`, `AVAILABLE_CHANNELS` and `AVAILABLE_VIEWINGS` are those of the observer.
 
 ### Fixed
