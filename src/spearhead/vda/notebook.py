@@ -292,8 +292,16 @@ class VDA_notebook:
         # the energy ranges of the channels are the same for all the events
         start, end = self.parameters.date_ranges[0]
         self.vda.construct_energies_df(start, end)
+        notes = [
+            self._note(f"{self.vda.observer.label} {sensor.upper()}: the energy ranges of the channels changed on "
+                       f"{date:%Y-%m-%d} ({reason}). They are read from the first event, so the events with "
+                       f"{sensor.upper()} channels must all be before or all after this date.")
+            for sensor, changes in self.vda.observer.ENERGY_CHANGES.items()
+            for date, reason in changes
+        ]
         return self._section(
             "Grouped energy channels (select multiple channels with Ctrl+click)",
+            *notes,
             self._channel_groups_widget(),
         )
 

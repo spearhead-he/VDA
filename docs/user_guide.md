@@ -34,15 +34,21 @@ The data of one spacecraft (observer) are analysed at a time:
 | Solar Orbiter | EPD/HET and EPD/EPT (protons, electrons) | sun, asun, north, south, omni | SPICE kernels |
 | STEREO-A | IMPACT/HET (protons, electrons) and IMPACT/SEPT (ions, shown as protons, and electrons) | HET: omni; SEPT: sun, asun, north, south | JPL Horizons |
 | Parker Solar Probe | ISOIS/EPI-Hi HET (protons, electrons) | A (sunward, as sun), B (anti-sunward, as asun) | JPL Horizons |
+| SOHO | ERNE-HED (protons) and COSTEP-EPHIN (electrons) | omni | JPL Horizons |
 
 Each sensor uses the selected viewings it has: with STEREO-A, HET uses omni and SEPT the others, so the grouped channels of a sensor need at least one of its viewings selected. The distance from the Sun gives the light travel time of the VDA (Extra Time); JPL Horizons needs an internet connection.
 
-The default grouped channels of STEREO-A and Parker Solar Probe are their consecutive HET channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
+The default grouped channels of STEREO-A, Parker Solar Probe and SOHO are their consecutive channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
 
 Parker Solar Probe:
 - the data are the 1-minute EPI-Hi HET rates (`PSP_ISOIS-EPIHI_L2-HET-RATES60`), available from mid-2021
 - the proton channels are 3 to 11 (11.3-53.8 MeV): the other channels of the data are empty
 - the electron data are count rates (the electron fluxes of the data have gaps during events), divided by the width of the channel (counts s⁻¹ MeV⁻¹). They are proportional to the intensity, but their values are not intensities
+
+SOHO:
+- the protons are the 1-minute ERNE-HED intensities (`SOHO_ERNE-HED_L2-1MIN`), channels 0 to 6 (13-64 MeV). Its three highest channels are not corrected and are left out, as in seppy
+- the electrons are the 1-minute EPHIN level 2 intensities (from the University of Kiel), channels 0 (E150, 0.25-0.7 MeV) and 2 (E1300). The energy range of E1300 depends on the date: 2.64-10.4 MeV before the failure mode D of EPHIN (4 October 2017), 0.67-10.4 MeV since. E300 (channel 1) is deactivated since then and E3000 (channel 3) has no data, so both are left out
+- the energy ranges of the channels are read from the first event, so an analysis with EPHIN channels cannot have events on both sides of 4 October 2017 (it raises an error): the events before and after it are analysed separately
 
 ## Parameters
 
@@ -54,7 +60,7 @@ The parameters form has five tabs:
   - the viewings
   - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), blank for no resampling)
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.
-- **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$.
+- **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$. A note shows when the energy ranges of a sensor changed on a date (SOHO EPHIN, see [Observers](#observers)).
 - **Onsets**: the onset determination method and its parameters (see [Onset determination](#onset-determination)), the default background window, and the onset selection method.
 - **Views/Plots**: font sizes, saving of the VDA plots as .png files, and display of the intermediate tables.
 

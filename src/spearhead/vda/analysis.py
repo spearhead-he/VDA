@@ -288,6 +288,22 @@ class VDA:
                     f"{', '.join(self.observer.SENSOR_VIEWINGS[sensor])}, or remove its grouped channels"
                 )
 
+    def check_energy_changes(self) -> None:
+        """Raises an error if the events are on both sides of a change of the channel energies of a used sensor.
+
+        The energy ranges of the channels are read from the first event and used for all the events.
+        """
+        for sensor in self.parameters.sensors_particles:
+            for date, reason in self.observer.ENERGY_CHANGES.get(sensor, []):
+                before = self.df_times[self.START_TIME_COLNAME] < date
+                after = self.df_times[self.END_TIME_COLNAME] >= date
+                if before.any() and after.any():
+                    raise ValueError(
+                        f"The energy ranges of the {self.observer.label} {sensor.upper()} channels changed on "
+                        f"{date:%Y-%m-%d} ({reason}), and the events are on both sides of it: analyse the events "
+                        f"before and after it separately"
+                    )
+
     def _iter_sensor_particle_viewings(self):
         """Yields (sensor, particle, viewing, particle_prefix) for the selected sensors, particles and viewings"""
         for sensor, particle, particle_prefix in self._iter_sensor_particles():
@@ -296,6 +312,7 @@ class VDA:
 
     def _download_data(self, show_progress: bool = True) -> pd.DataFrame:
         self.check_viewings()
+        self.check_energy_changes()
         df_rows = []
         keys = []
         for index, row in self.df_times.iterrows():
@@ -396,6 +413,7 @@ class VDA:
 
     def group_energy_channels(self):
         self.check_viewings()
+        self.check_energy_changes()
         grouped_frames = []
         for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
             df_temp = self._group_channels_de(

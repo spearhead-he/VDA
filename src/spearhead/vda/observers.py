@@ -10,11 +10,13 @@ Sensors without viewings have the single viewing "omni".
 OBSERVERS holds the available observers by name, the values of VDA_parameters.observer.
 """
 import os
+import re
 from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 from seppy.loader.psp import psp_isois_load
+from seppy.loader.soho import soho_load
 from seppy.loader.stereo import stereo_load
 from sunpy.coordinates import get_horizons_coord, spice
 from sunpy.data import cache
@@ -60,6 +62,9 @@ class Observer:
     DEFAULT_CHANNEL_GROUPS: dict
     # Name of the observer in JPL Horizons, for the default distance()
     HORIZONS_NAME: str | None = None
+    # Dates when the energy ranges of the channels of a sensor changed: {sensor: [(date, reason), ...]}.
+    # The energy ranges are read from the first event, so all the events must be on the same side of each date
+    ENERGY_CHANGES: dict = {}
 
     def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
         """Returns the data of the particles of the sensor (by default all of them)"""
@@ -326,5 +331,65 @@ class ParkerSolarProbe(Observer):
         return data
 
 
-OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe())}
+class Soho(Observer):
+    name = "soho"
+    label = "SOHO"
+
+    # ERNE-HED protons and COSTEP-EPHIN electrons
+    SENSORS_PARTICLES = {
+        "erne": ("protons",),
+        "ephin": ("electrons",),
+    }
+
+    # EPHIN electron channels: 0 is E150 and 2 is E1300. E300 (1) is deactivated since the failure mode D
+    # (4 Oct 2017) and E3000 (3) has no data
+    CHANNELS = {
+        "erne": {"protons": tuple(range(7))},
+        "ephin": {"electrons": (0, 2)},
+    }
+
+    VIEWINGS = ("omni",)
+    SENSOR_VIEWINGS = {"erne": VIEWINGS, "ephin": VIEWINGS}
+    DEFAULT_VIEWINGS = ("omni",)
+    HORIZONS_NAME = "SOHO"
+    # E1300: 2.64-10.4 MeV before, 0.67-10.4 MeV since
+    ENERGY_CHANGES = {"ephin": [(pd.Timestamp("2017-10-04"), "the failure mode D of EPHIN")]}
+
+    DEFAULT_CHANNEL_GROUPS = {
+        "protons": {"erne": default_groups(CHANNELS["erne"]["protons"], "protons")},
+        "electrons": {"ephin": default_groups(CHANNELS["ephin"]["electrons"], "electrons")},
+    }
+
+    EPHIN_ELECTRON_COLUMNS = ("E150", "E300", "E1300", "E3000")
+
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        path = os.path.join(path, "soho")
+        os.makedirs(path, exist_ok=True)
+        if sensor == "erne":
+            df, meta = soho_load("SOHO_ERNE-HED_L2-1MIN", startdate, enddate, path=path)
+        else:
+            df, meta = soho_load("SOHO_COSTEP-EPHIN_L2-1MIN", startdate, enddate, path=path)
+        if len(df) == 0:
+            raise ValueError(f"No {self.label} {sensor.upper()} data from {startdate} to {enddate}")
+
+        channels = list(self.CHANNELS[sensor][self.SENSORS_PARTICLES[sensor][0]])
+        if sensor == "erne":
+            flux = df[[f"PH_{c}" for c in channels]].set_axis(channels, axis="columns")
+            energies = meta["channels_dict_df_p"].loc[channels]
+            low_energy, width = energies["lower_E"].to_numpy(), energies["DE"].to_numpy()
+            return {"protons": ParticleData(
+                flux, pd.DataFrame({"Low Energy": low_energy, "Bin Width": width}, index=channels))}
+
+        columns = [self.EPHIN_ELECTRON_COLUMNS[c] for c in channels]
+        flux = df[columns].set_axis(channels, axis="columns")
+        # the energy ranges of the channels depend on the date, e.g. "0.67 - 10.4 MeV"
+        ranges = [[float(e) for e in re.findall(r"\d+(?:\.\d+)?", meta["energy_labels"][c])] for c in columns]
+        return {"electrons": ParticleData(
+            flux,
+            pd.DataFrame({"Low Energy": [low for low, _ in ranges], "Bin Width": [high - low for low, high in ranges]},
+                         index=channels),
+        )}
+
+
+OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe(), Soho())}
 DEFAULT_OBSERVER = "solo"

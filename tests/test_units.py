@@ -414,6 +414,67 @@ def test_parker_solar_probe_default_groups():
     assert [g["channels"] for g in p.channel_groups["electrons"].values()][-1] == [16, 17, 18]
 
 
+def soho_like_data(dataset, startdate, enddate, path=None):
+    """Data as returned by soho_load: ERNE-HED with 7 proton channels, EPHIN after the failure mode D"""
+    index = pd.date_range("2021-10-28 14:00", periods=20, freq="1min")
+    if dataset == "SOHO_ERNE-HED_L2-1MIN":
+        columns = [f"{p}_{c}" for p in ("AH", "PH") for c in range(7)]
+        lower = np.array([13.0, 16, 20, 25, 32, 40, 50])
+        meta = {"channels_dict_df_p": pd.DataFrame({"lower_E": lower, "DE": np.diff(np.append(lower, 64.0))})}
+    else:
+        columns = ["E150", "E300", "E1300", "E3000", "P4"]
+        meta = {"energy_labels": {"E150": "0.25 - 0.7 MeV", "E300": "deactivated bc. of failure mode D",
+                                  "E1300": "0.67 - 10.4 MeV", "E3000": "4.80 - 10.4 MeV", "P4": "4.3 - 7.8 MeV"}}
+    return pd.DataFrame({c: float(i) for i, c in enumerate(columns)}, index=index), meta
+
+
+def test_soho_load(monkeypatch, tmp_path):
+    monkeypatch.setattr(observers, "soho_load", soho_like_data)
+    soho = observers.Soho()
+    erne = soho.load("erne", "2021-10-28 14:00", "2021-10-28 15:00", "omni", str(tmp_path))
+    assert list(erne) == ["protons"]
+    assert erne["protons"].flux.columns.tolist() == list(range(7))
+    assert (erne["protons"].flux[0] == 7.0).all()
+    assert erne["protons"].energies.loc[6].tolist() == [50.0, 14.0]
+    ephin = soho.load("ephin", "2021-10-28 14:00", "2021-10-28 15:00", "omni", str(tmp_path))
+    assert list(ephin) == ["electrons"]
+    # E150 and E1300, with the energy ranges of their labels
+    assert ephin["electrons"].flux.columns.tolist() == [0, 2]
+    assert (ephin["electrons"].flux[2] == 2.0).all()
+    assert ephin["electrons"].energies["Low Energy"].tolist() == [0.25, 0.67]
+    assert ephin["electrons"].energies["Bin Width"].tolist() == pytest.approx([0.45, 9.73])
+
+
+def test_soho_default_groups():
+    p = VDA_parameters(observer="soho")
+    assert p.viewings == ["omni"]
+    assert p.sensors_particles == {"erne": ["protons"], "ephin": ["electrons"]}
+    assert [g["channels"] for g in p.channel_groups["protons"].values()] == [[0, 1, 2], [3, 4, 5, 6]]
+    assert [g["channels"] for g in p.channel_groups["electrons"].values()] == [[0, 2]]
+
+
+@pytest.mark.parametrize("date_ranges, channel_groups, error", [
+    # before and after the failure mode D of EPHIN
+    ([(datetime(2012, 5, 17), datetime(2012, 5, 18)), (datetime(2021, 10, 28), datetime(2021, 10, 29))], None, True),
+    # an event across it
+    ([(datetime(2017, 10, 3), datetime(2017, 10, 5))], None, True),
+    ([(datetime(2021, 10, 28), datetime(2021, 10, 29)), (datetime(2024, 5, 11), datetime(2024, 5, 12))], None, False),
+    # without EPHIN channels
+    ([(datetime(2012, 5, 17), datetime(2012, 5, 18)), (datetime(2021, 10, 28), datetime(2021, 10, 29))],
+     {"protons": {"ERNE/protons Channel 1": {"sensor": "erne", "channels": [0, 1, 2]}}}, False),
+])
+def test_energy_changes(date_ranges, channel_groups, error):
+    v = make_vda(observer="soho", date_ranges=date_ranges)
+    if channel_groups:
+        v.parameters.channel_groups = channel_groups
+    v.construct_times_df()
+    if error:
+        with pytest.raises(ValueError, match="SOHO EPHIN channels changed on 2017-10-04"):
+            v.check_energy_changes()
+    else:
+        v.check_energy_changes()
+
+
 def test_viewings_of_each_sensor(monkeypatch):
     # STEREO-A HET has only the omni viewing, SEPT has no omni viewing
     monkeypatch.setattr(observers, "stereo_load", stereo_like_data)
