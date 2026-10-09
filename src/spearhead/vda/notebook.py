@@ -16,7 +16,7 @@ from sunpy import log as sunpy_log
 
 from . import views
 from .analysis import VDA
-from .conf import OnsetSelection, VDA_parameters, channel_group_label
+from .conf import ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
 
 
 def _show_figure(fig) -> None:
@@ -351,9 +351,7 @@ class VDA_notebook:
     ############### Onsets tab ###############
     def _onsets_tab(self):
         return widgets.VBox([
-            self._section("Onset determination method",
-                          self._onset_method_widget(),
-                          self._onset_method_parameters_widget()),
+            self._section("Onset determination method", self._onset_method_widget()),
             self._section("Default background window",
                           self._bg_defaults_widget(),
                           self._note("The background window of each event can be checked and adjusted later, "
@@ -362,18 +360,26 @@ class VDA_notebook:
         ])
 
     def _onset_method_widget(self):
-        w = widgets.Dropdown(options=list(self.parameters.AVAILABLE_ONSET_METHODS.keys()),
+        """The onset method, and the parameters of the selected method"""
+        w = widgets.Dropdown(options=[(ONSET_METHOD_LABELS.get(m, m), m) for m in self.parameters.AVAILABLE_ONSET_METHODS],
                              value=self.parameters.onset_method,
                              description="Onset determination method:",
                              style=self._style)
-        self._bind(w, "onset_method")
-        return w
+        wrapper_parameters = widgets.VBox([self._onset_method_parameters_widget()])
+
+        def set_method(traitlet):
+            # the parameters are set to the defaults of the new method
+            self.parameters.onset_method = traitlet["new"]
+            wrapper_parameters.children = [self._onset_method_parameters_widget()]
+
+        w.observe(set_method, names="value")
+        return widgets.VBox([w, wrapper_parameters])
 
     def _onset_method_parameters_widget(self):
         list_param_widgets = []
         for parameter, pinfo in self.parameters.AVAILABLE_ONSET_METHODS[self.parameters.onset_method].items():
             widget_params = {
-                "value": pinfo["default"],
+                "value": self.parameters.onset_method_parameters.get(parameter, pinfo["default"]),
                 "description": f'{parameter} | {pinfo["description"]}',
                 "style": self._style,
                 "layout": self._layout,
