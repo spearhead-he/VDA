@@ -67,7 +67,9 @@ def test_vda_default():
 
     # check legend contents manually
     handles, labels = fig.axes[0].get_legend_handles_labels()
-    assert labels == ['Linear Regression',
+    assert labels == ['Protons',
+                      'Electrons',
+                      'Linear Regression',
                       'Extra Time = 0:06:40',
                       'Release Time = 2021-10-28 15:26:11 +/- 0:03:38',
                       'APL = 1.76 +/- 0.12']

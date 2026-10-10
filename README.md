@@ -1,5 +1,5 @@
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.14441053-blue)](https://doi.org/10.5281/zenodo.14441053)
-[![Python versions](https://img.shields.io/badge/python-3.10_--_3.14-blue)]()
+[![Python versions](https://img.shields.io/badge/python-3.11_--_3.14-blue)]()
 [![pytest](https://github.com/spearhead-he/VDA/actions/workflows/pytest.yml/badge.svg?branch=main)](https://github.com/spearhead-he/VDA/actions/workflows/pytest.yml)
 [![codecov](https://codecov.io/github/spearhead-he/VDA/graph/badge.svg?token=GH3JBH0EGW)](https://codecov.io/github/spearhead-he/VDA)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
@@ -24,7 +24,7 @@ The tool utilizes the Pandas module and generates multiple DataFrames during its
 
 *Tool is still under active development and its results should be handled with caution.* 
 
-*Tested in Ubuntu 22.04 with Python version 3.10.12, and MacOS 15.1.1 with Python 3.10.16 and 3.12.8*
+*Tested in Ubuntu with Python 3.11 to 3.14, and MacOS 15.1.1 with Python 3.12.8*
 
 ## How to install
 
@@ -34,7 +34,7 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 
 ### Install locally
 
-1. This tool requires a recent Python (>=3.10) installation. [Following SunPy's approach, we recommend installing Python via miniforge (click for instructions).](https://docs.sunpy.org/en/stable/tutorial/installation.html#installing-python)
+1. This tool requires a recent Python (>=3.11) installation. [Following SunPy's approach, we recommend installing Python via miniforge (click for instructions).](https://docs.sunpy.org/en/stable/tutorial/installation.html#installing-python)
 2. [Download this file](https://github.com/spearhead-he/VDA/archive/refs/heads/main.zip) and extract to a folder of your choice (or clone the repository [https://github.com/spearhead-he/VDA](https://github.com/spearhead-he/VDA) if you know how to use `git`).
 3. Open a terminal or the miniforge prompt and move to the directory where the code is.
 4. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).

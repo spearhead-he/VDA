@@ -740,7 +740,8 @@ class VDA:
                         channel
                     ]["Onset Time"]
                     .to_pydatetime() - t0)
-                    .total_seconds())
+                    .total_seconds(),
+                    particle)
                 )
 
             if len(vda_points) < 2:
@@ -753,6 +754,7 @@ class VDA:
             vda_points = sorted(vda_points, key=lambda x: x[0])
             inv_betas = np.array([p[0] for p in vda_points])
             onset_seconds = np.array([p[1] for p in vda_points])
+            particles = np.array([p[2] for p in vda_points])
 
             try:
                 p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
@@ -780,6 +782,7 @@ class VDA:
                 "t0": t0,
                 "inv_betas": inv_betas,
                 "onset_seconds": onset_seconds,
+                "particles": particles,
                 "a": a,
                 "b": b,
                 "b_error": b_error,

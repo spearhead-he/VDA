@@ -10,12 +10,13 @@ from datetime import datetime, timedelta
 
 import astropy.constants as const
 import astropy.units as u
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
 
 from spearhead.vda import OnsetSelection, VDA, VDA_parameters
-from spearhead.vda import analysis, observers
+from spearhead.vda import analysis, observers, views
 
 
 def make_vda(**parameters) -> VDA:
@@ -692,23 +693,27 @@ class FixedDistance:
     distance = 0.8 * u.AU
 
 
-def vda_with_onsets(onsets):
-    """One event with onsets on 4 channels of inverse beta 1 to 4"""
-    channels = [f"HET/protons Channel {i}" for i in range(1, len(onsets) + 1)]
+def vda_with_onsets(onsets, particles=None):
+    """One event with onsets on channels of inverse beta 1, 2, ..., of HET protons or of the given particles"""
+    particles = particles or ["protons"] * len(onsets)
+    channels = [f"HET/{p} Channel {i}" for i, p in enumerate(particles, start=1)]
+    prefixes = ["H_Flux" if p == "protons" else "Electron_Flux" for p in particles]
     v = make_vda(date_ranges=[(datetime(2021, 10, 31, 2), datetime(2021, 10, 31, 6))])
     v.construct_times_df()
     v.df_channels_chars = pd.DataFrame(
         {"Inverse Beta": [float(i) for i in range(1, len(onsets) + 1)]},
-        index=pd.MultiIndex.from_tuples([("het", "protons", c) for c in channels], names=["sensor", "particle", "channel"]),
+        index=pd.MultiIndex.from_tuples(
+            [("het", p, c) for p, c in zip(particles, channels)], names=["sensor", "particle", "channel"]
+        ),
     )
     v.df_onsets_existing = pd.DataFrame(
         {"Onset Time": [pd.Timestamp(t) for t in onsets]},
-        index=pd.MultiIndex.from_tuples([(1, "het", "protons", "sun", "H_Flux", c) for c in channels]),
+        index=pd.MultiIndex.from_tuples([(1, "het", p, "sun", f, c) for p, f, c in zip(particles, prefixes, channels)]),
     )
     v.df_options = v.df_onsets_existing.reorder_levels([0, 1, 2, 4, 5, 3])
     v.parameters.selected_onsets = pd.DataFrame(
         {"Viewing": ["sun"] * len(channels)},
-        index=pd.MultiIndex.from_tuples([(1, "het", "protons", "H_Flux", c) for c in channels]),
+        index=pd.MultiIndex.from_tuples([(1, "het", p, f, c) for p, f, c in zip(particles, prefixes, channels)]),
     )
     return v
 
@@ -756,6 +761,22 @@ def test_vda_fit_needs_two_points(fixed_spacecraft_distance, capsys):
     v.compute_vda()
     assert "Not enough onset points in event 1" in capsys.readouterr().out
     assert pd.isna(v.results.loc[1, "APL"])
+
+
+def test_vda_points_of_protons_and_electrons(fixed_spacecraft_distance):
+    v = vda_with_onsets(
+        ["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00", "2021-10-31 04:20"],
+        particles=["protons", "electrons", "protons", "electrons"],
+    )
+    v.compute_vda()
+    assert list(v.vda_fits[1]["particles"]) == ["protons", "electrons", "protons", "electrons"]
+    # the date of the title
+    times = pd.date_range("2021-10-31 02:00", periods=2, freq="min")
+    v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], times]))
+    fig = views.plot_vda(v, 1)
+    points = {c.get_label(): len(c.get_offsets()) for c in fig.axes[0].collections}
+    assert points["Protons"] == 2 and points["Electrons"] == 2
+    plt.close(fig)
 
 
 # ---------------------------------------------------------------- parameters

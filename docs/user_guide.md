@@ -117,4 +117,4 @@ The plots of the interactive onset selection show the background level and the t
 
 ## Results
 
-For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot, which can also be saved as a .png file (Views/Plots tab). The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.
+For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot (onsets of the proton channels as circles, of the electron channels as stars), which can also be saved as a .png file (Views/Plots tab). The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.

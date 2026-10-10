@@ -79,7 +79,7 @@ The functions of `spearhead.vda.views` return a matplotlib figure without showin
 |---|---|
 | `plot_bg(vda, event_no)` | Grouped channels of the event with its background window |
 | `plot_onsets(vda, event_no, sensor, particle, prefix, channel, selected_viewing=None)` | Detected onsets of a grouped channel, one subplot per viewing |
-| `plot_vda(vda, event_no)` | VDA fit of the event (after `vda.compute_vda()`) |
+| `plot_vda(vda, event_no)` | VDA fit of the event (after `vda.compute_vda()`), with the proton points as circles and the electron points as stars |
 
 `vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
 
