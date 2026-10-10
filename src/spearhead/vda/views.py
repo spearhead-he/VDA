@@ -153,11 +153,19 @@ def plot_vda(vda, event_no, filename=None) -> Figure:
     res = vda.results.loc[event_no]
     fig = plt.figure(figsize=(12, 8), layout="constrained")
     ax = fig.add_subplot()
-    ax.scatter(
-        inv_betas,
-        [to_time(t) for t in fit["onset_seconds"]],
-        color="black",
-    )
+    # protons as circles, electrons as stars, enlarged to look as big as the circles
+    marker_size = plt.rcParams["lines.markersize"] ** 2
+    for particle, marker, size in (("protons", "o", marker_size), ("electrons", "*", 2.25 * marker_size)):
+        is_particle = fit["particles"] == particle
+        if is_particle.any():
+            ax.scatter(
+                inv_betas[is_particle],
+                [to_time(t) for t in fit["onset_seconds"][is_particle]],
+                color="black",
+                marker=marker,
+                s=size,
+                label=particle.capitalize(),
+            )
     ax.plot(
         inv_betas,
         [to_time(a * x + b) for x in inv_betas],
