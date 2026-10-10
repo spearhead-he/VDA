@@ -485,6 +485,40 @@ def test_wind_default_groups():
     assert [g["channels"] for g in p.channel_groups["electrons"].values()] == [[0, 1], [2, 3], [4, 5, 6]]
 
 
+def bepi_like_data(startdate, enddate=None, path=None):
+    """Data as returned by bepi_sixsp_l3_loader: sides 0-3 with P1-P9 and E1-E7, with UTC times"""
+    # the loader is called from midnight
+    assert startdate == pd.Timestamp("2023-03-13")
+    index = pd.date_range("2023-03-13 00:01", periods=20, freq="2min", tz="UTC")
+    columns = {f"Side{side}_{p}{c}": float(10 * side + c)
+               for side in range(4) for p, n in (("P", 9), ("E", 7)) for c in range(1, n + 1)}
+    meta = {}
+    for side in range(4):
+        for key, p, n in (("Proton", "P", 9), ("Electron", "E", 7)):
+            meta[f"Side{side}_{key}_Bins_Low_Energy"] = {f"{p}{c}": float(c) for c in range(1, n + 1)}
+            meta[f"Side{side}_{key}_Bins_High_Energy"] = {f"{p}{c}": c + 0.5 + side for c in range(1, n + 1)}
+    return pd.DataFrame(columns, index=index), meta
+
+
+def test_bepicolombo_load(monkeypatch, tmp_path):
+    monkeypatch.setattr(observers, "bepi_sixsp_l3_loader", bepi_like_data)
+    data = observers.BepiColombo().load("sixs", "2023-03-13 06:00", "2023-03-13 12:00", "side2", str(tmp_path))
+    assert data["protons"].flux.columns.tolist() == list(range(1, 10))
+    assert data["electrons"].flux.columns.tolist() == list(range(1, 8))
+    # the data and energies of the side, with times without time zone
+    assert (data["electrons"].flux[3] == 23.0).all()
+    assert data["protons"].energies.loc[4].tolist() == [4.0, 2.5]
+    assert data["protons"].flux.index.tz is None
+
+
+def test_bepicolombo_defaults():
+    p = VDA_parameters(observer="bepi")
+    assert p.viewings == ["side0"]
+    assert p.AVAILABLE_VIEWINGS == ("side0", "side1", "side2")
+    assert [g["channels"] for g in p.channel_groups["protons"].values()] == [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    assert [g["channels"] for g in p.channel_groups["electrons"].values()] == [[1, 2], [3, 4], [5, 6, 7]]
+
+
 @pytest.mark.parametrize("date_ranges, channel_groups, error", [
     # before and after the failure mode D of EPHIN
     ([(datetime(2012, 5, 17), datetime(2012, 5, 18)), (datetime(2021, 10, 28), datetime(2021, 10, 29))], None, True),

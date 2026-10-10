@@ -36,10 +36,11 @@ The data of one spacecraft (observer) are analysed at a time:
 | Parker Solar Probe | ISOIS/EPI-Hi HET (protons, electrons) | A (sunward, as sun), B (anti-sunward, as asun) | JPL Horizons |
 | SOHO | ERNE-HED (protons) and COSTEP-EPHIN (electrons) | omni | JPL Horizons |
 | Wind | 3DP (protons, electrons) | omni | JPL Horizons |
+| BepiColombo | SIXS-P (protons, electrons) | side0 (perpendicular to the Sun direction), side1 and side2 (anti-sunward) | JPL Horizons |
 
 Each sensor uses the selected viewings it has: with STEREO-A, HET uses omni and SEPT the others, so the grouped channels of a sensor need at least one of its viewings selected. The distance from the Sun gives the light travel time of the VDA (Extra Time); JPL Horizons needs an internet connection.
 
-The default grouped channels of STEREO-A, Parker Solar Probe, SOHO and Wind are their consecutive channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
+The default grouped channels of STEREO-A, Parker Solar Probe, SOHO, Wind and BepiColombo are their consecutive channels, in groups of three for protons and of two for electrons; a single channel left at the end joins the previous group.
 
 Parker Solar Probe:
 - the data are the 1-minute EPI-Hi HET rates (`PSP_ISOIS-EPIHI_L2-HET-RATES60`), available from mid-2021
@@ -54,6 +55,11 @@ SOHO:
 Wind:
 - the data are the omnidirectional fluxes of the 3DP solid state telescopes: protons from SST Open (`WI_SOSP_3DP`, 9 channels, about 70 keV-6.8 MeV) and electrons from SST Foil (`WI_SFSP_3DP`, 7 channels, about 27-520 keV), at about 12 s
 - the energy of each channel is its mean energy in the loaded data, with a width of 60% of it, as in seppy: the energy ranges of neighbouring channels overlap
+
+BepiColombo:
+- the data are the SIXS-P level 3 cruise phase data of the SERPENTINE project (monthly files of about 40 MB, at 2 minutes), available from 2020 to April 2024 with gaps: protons P1-P9 (about 1-90 MeV) and electrons E1-E7 (about 55 keV-10 MeV)
+- the viewings are the detector sides. In the cruise phase the Sun is along the +Y axis of the spacecraft: about 97° from the boresight of side 0, and 135° from sides 1 and 2. Side 3, at 45° from the Sun, has no data in the level 3 product, and side 4 is blocked by the sunshade, so there is no sunward viewing
+- the energy ranges of the channels differ slightly between the sides (most for P9 and E7); those of side 0 are used for all the sides
 
 ## Parameters
 

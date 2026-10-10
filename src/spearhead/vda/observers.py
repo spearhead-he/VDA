@@ -15,6 +15,7 @@ from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
+from seppy.loader.bepi import bepi_sixsp_l3_loader
 from seppy.loader.psp import psp_isois_load
 from seppy.loader.soho import soho_load
 from seppy.loader.stereo import stereo_load
@@ -441,5 +442,67 @@ class Wind(Observer):
         return data
 
 
-OBSERVERS = {observer.name: observer for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe(), Soho(), Wind())}
+class BepiColombo(Observer):
+    name = "bepi"
+    label = "BepiColombo"
+
+    # SIXS-P, level 3 cruise phase data of the SERPENTINE project
+    SENSORS_PARTICLES = {"sixs": ("protons", "electrons")}
+
+    # P1-P9 and E1-E7
+    CHANNELS = {
+        "sixs": {
+            "protons": tuple(range(1, 10)),
+            "electrons": tuple(range(1, 8)),
+        },
+    }
+
+    # Sides 0-2 of SIXS-P. In the cruise phase the Sun is along the +Y axis of the spacecraft (SPICE attitude), at about
+    # 97 degrees from the boresight of side 0 and 135 degrees from sides 1 and 2. Side 3 (45 degrees from the Sun) has
+    # no data in the level 3 product, and side 4 is blocked by the sunshade of the spacecraft
+    VIEWINGS = ("side0", "side1", "side2")
+    SENSOR_VIEWINGS = {"sixs": VIEWINGS}
+    DEFAULT_VIEWINGS = ("side0",)
+    VIEWING_DESCRIPTIONS = {
+        "side0": "perpendicular to the Sun direction (about 97°)",
+        "side1": "anti-sunward (about 135° from the Sun direction)",
+        "side2": "anti-sunward (about 135° from the Sun direction)",
+    }
+    HORIZONS_NAME = "BepiColombo"
+
+    DEFAULT_CHANNEL_GROUPS = {
+        "protons": {"sixs": default_groups(CHANNELS["sixs"]["protons"], "protons")},
+        "electrons": {"sixs": default_groups(CHANNELS["sixs"]["electrons"], "electrons")},
+    }
+
+    # Column and energy key of each particle
+    CHANNEL_PREFIX = {"protons": ("P", "Proton"), "electrons": ("E", "Electron")}
+
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        path = os.path.join(path, "bepi")
+        os.makedirs(path, exist_ok=True)
+        # from midnight: with a start time of the day, the loader can miss the monthly file of the start
+        df, meta = bepi_sixsp_l3_loader(pd.Timestamp(startdate).normalize(), enddate, path=path)
+        if len(df) == 0:
+            raise ValueError(f"No {self.label} SIXS-P data from {startdate} to {enddate}")
+        df.index = df.index.tz_convert(None)
+        side = viewing.removeprefix("side")
+        data = {}
+        for particle in particles or self.SENSORS_PARTICLES[sensor]:
+            column, key = self.CHANNEL_PREFIX[particle]
+            channels = list(self.CHANNELS[sensor][particle])
+            flux = df[[f"Side{side}_{column}{c}" for c in channels]].set_axis(channels, axis="columns")
+            low = [meta[f"Side{side}_{key}_Bins_Low_Energy"][f"{column}{c}"] for c in channels]
+            high = [meta[f"Side{side}_{key}_Bins_High_Energy"][f"{column}{c}"] for c in channels]
+            data[particle] = ParticleData(
+                flux,
+                pd.DataFrame({"Low Energy": low, "Bin Width": np.subtract(high, low)}, index=channels),
+            )
+        return data
+
+
+OBSERVERS = {
+    observer.name: observer
+    for observer in (SolarOrbiter(), StereoA(), ParkerSolarProbe(), Soho(), Wind(), BepiColombo())
+}
 DEFAULT_OBSERVER = "solo"
