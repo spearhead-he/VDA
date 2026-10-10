@@ -11,7 +11,7 @@
   - [About](#about)
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
-  - [What's new in v0.5.0](#whats-new-in-v050)
+  - [What's new in v0.6.0](#whats-new-in-v060)
   - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
@@ -59,13 +59,12 @@ tool.run_vda()               # results and plots
 
 The events are given with a .csv file (datetime ranges or reference times, see the [examples](examples/)) or entered in the form. See the [user guide](docs/user_guide.md) for details.
 
-## What's new in v0.5.0
+## What's new in v0.6.0
 
-- The tool is an installable Python package, `spearhead.vda`, which can also be used in scripts and other notebooks (see [Using the VDA tool without the notebook](docs/library.md)).
-- The plots are returned as matplotlib figures (`spearhead.vda.views`), saved only when a filename is given.
-- The background window and interactive onset selection widgets can be used in other notebooks with `VDA_notebook(vda)`.
-- The default grouped channels are also used without the notebook.
-- Fixed: the Notebook could stop responding with ipykernel 7.0 to 7.3.
+- Spacecraft other than Solar Orbiter: STEREO-A, Parker Solar Probe, SOHO, Wind and BepiColombo, selected in the Data tab of the parameters form (see [Observers](docs/user_guide.md#observers)).
+- Poisson-CUSUM onset determination method, from [pyonset](https://github.com/Christian-Palmroos/PyOnset).
+- The Sigma threshold onset is the last point before the rise, as in the Poisson-CUSUM method: the release times are one data point earlier than with v0.5.0.
+- The parameters form shows an error, instead of stopping, when the selected spacecraft has no data for the first event.
 
 See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
