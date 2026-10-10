@@ -4,6 +4,9 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Removed
+- Support for Python 3.10, which reaches its end of life in October 2026: the tool requires Python 3.11 or newer. The `notebook` extra requires ipykernel 7.4 or newer on all Python versions.
+
 ## [0.6.0] - 2026-10-10
 
 ### Added
