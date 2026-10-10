@@ -37,6 +37,7 @@ from spearhead.vda import VDA, VDA_parameters, views
 
 parameters = VDA_parameters()
 parameters.input_filepath = "examples/datetime_range_example.csv"
+parameters.observer = "solo"            # Solar Orbiter (or "sta", "psp", "soho", "wind", "bepi")
 parameters.viewings = ["sun"]
 parameters.channel_groups = {
     "protons": {
@@ -62,7 +63,7 @@ vda.clean_onsets()
 vda.construct_options_df()
 vda.select_onsets()                     # "Use all" onset selection
 vda.construct_energy_channels_characteristics()
-vda.define_spacecraft_parameters()      # distance of the observer from the Sun (SPICE kernels for Solar Orbiter)
+vda.define_spacecraft_parameters()      # distance of the observer from the Sun (e.g. SPICE kernels for Solar Orbiter)
 vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()
 print(vda.results)
@@ -104,10 +105,10 @@ tool.onset_selection()        # after vda.select_onsets()
 | `date_ranges` | List of (start, end) datetimes, one per event, used without an events file |
 | `bg_hours_prior`, `bg_hours_after` | Data range of the files with reference times, in hours before and after the reference time |
 | `bg_after_start` | Default background window, (start, end) in minutes after the start of the data of each event |
-| `observer` | Spacecraft of the data, one of `observers.OBSERVERS`. For now only `"solo"` (Solar Orbiter EPD: HET and EPT) |
-| `viewings` | Viewings, in the priority order of the "Use all" onset selection. By default, those of the observer (`["sun"]` for Solar Orbiter) |
+| `observer` | Spacecraft of the data, one of `observers.OBSERVERS`: `"solo"` (Solar Orbiter EPD: HET and EPT), `"sta"` (STEREO-A IMPACT: HET and SEPT) `"psp"` (Parker Solar Probe ISOIS: EPI-Hi HET), `"soho"` (SOHO: ERNE-HED and COSTEP-EPHIN), `"wind"` (Wind: 3DP) or `"bepi"` (BepiColombo: SIXS-P), see the [user guide](user_guide.md#observers). Setting `observer` sets `viewings` and `channel_groups` to its defaults |
+| `viewings` | Viewings, in the priority order of the "Use all" onset selection. Each sensor uses the selected viewings it has (`vda.sensor_viewings(sensor)`). By default, those of the observer (`["sun"]` for Solar Orbiter, `["sun", "omni"]` for STEREO-A, `["A"]` for Parker Solar Probe, `["omni"]` for SOHO and Wind, `["side0"]` for BepiColombo) |
 | `resample_frequency` | Pandas offset alias (e.g. `"5min"`), or `""` for no resampling |
-| `channel_groups` | Grouped channels per particle: `{label: {"sensor": "het" or "ept", "channels": [...]}}`. By default, those of the observer (for Solar Orbiter, 8 groups of HET protons and 2 of HET electrons) |
+| `channel_groups` | Grouped channels per particle: `{label: {"sensor": e.g. "het", "channels": [...]}}`. By default, those of the observer (for Solar Orbiter, 8 groups of HET protons and 2 of HET electrons; for STEREO-A, 4 of HET protons and 1 of HET electrons; for Parker Solar Probe, 3 of HET protons and 9 of HET electrons; for SOHO, 2 of ERNE protons and 1 of EPHIN electrons; for Wind, 3 of 3DP protons and 3 of 3DP electrons; for BepiColombo, 3 of SIXS protons and 3 of SIXS electrons) |
 | `onset_method`, `onset_method_parameters` | Onset determination method, `"sigma"` (parameters `s`, `n`) or `"poisson_cusum"` (parameters `cusum_minutes`, `sigma_multiplier`), see the [user guide](user_guide.md#onset-determination). Setting `onset_method` sets its parameters to their defaults |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |

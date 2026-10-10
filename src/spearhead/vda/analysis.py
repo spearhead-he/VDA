@@ -74,9 +74,9 @@ class VDA:
         """Column name of the channel number in the data, e.g. H_Flux_12"""
         return f"{self.PARTICLE_COLUMN_PREFIX[particle]}_{channel}"
 
-    def _load_observer_data(self, sensor, startdate, enddate, viewing) -> dict:
-        """Data of each particle of the sensor, with the channel column names of the data"""
-        data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH)
+    def _load_observer_data(self, sensor, startdate, enddate, viewing, particles) -> dict:
+        """Data of the particles of the sensor, with the channel column names of the data"""
+        data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH, particles=list(particles))
         return {
             particle: (
                 particle_data.flux.rename(columns=lambda c: self._channel_column(particle, c)),
@@ -255,11 +255,9 @@ class VDA:
             if len(particles) == 0:
                 continue
             # the energy bins are the same in all viewings
-            data = self._load_observer_data(sensor, startdate, enddate, self.observer.VIEWINGS[0])
+            data = self._load_observer_data(sensor, startdate, enddate, self.observer.SENSOR_VIEWINGS[sensor][0], particles)
             df_particles = []
             for particle, (_, df_energies) in data.items():
-                if particle not in particles:
-                    continue
                 df_energies = df_energies.copy()
                 df_energies["High Energy"] = df_energies["Low Energy"] + df_energies["Bin Width"]
                 df_particles.append(df_energies)
@@ -276,13 +274,45 @@ class VDA:
             for particle in particles:
                 yield sensor, particle, self.PARTICLE_COLUMN_PREFIX[particle]
 
+    def sensor_viewings(self, sensor) -> list:
+        """Selected viewings of the sensor, in the order of parameters.viewings"""
+        return [v for v in self.parameters.viewings if v in self.observer.SENSOR_VIEWINGS[sensor]]
+
+    def check_viewings(self) -> None:
+        """Raises an error if a sensor of the grouped channels has none of the selected viewings"""
+        for sensor in self.parameters.sensors_particles:
+            if not self.sensor_viewings(sensor):
+                raise ValueError(
+                    f"None of the selected viewings ({', '.join(self.parameters.viewings)}) is a viewing of "
+                    f"{self.observer.label} {sensor.upper()}: select one of "
+                    f"{', '.join(self.observer.SENSOR_VIEWINGS[sensor])}, or remove its grouped channels"
+                )
+
+    def check_energy_changes(self) -> None:
+        """Raises an error if the events are on both sides of a change of the channel energies of a used sensor.
+
+        The energy ranges of the channels are read from the first event and used for all the events.
+        """
+        for sensor in self.parameters.sensors_particles:
+            for date, reason in self.observer.ENERGY_CHANGES.get(sensor, []):
+                before = self.df_times[self.START_TIME_COLNAME] < date
+                after = self.df_times[self.END_TIME_COLNAME] >= date
+                if before.any() and after.any():
+                    raise ValueError(
+                        f"The energy ranges of the {self.observer.label} {sensor.upper()} channels changed on "
+                        f"{date:%Y-%m-%d} ({reason}), and the events are on both sides of it: analyse the events "
+                        f"before and after it separately"
+                    )
+
     def _iter_sensor_particle_viewings(self):
         """Yields (sensor, particle, viewing, particle_prefix) for the selected sensors, particles and viewings"""
         for sensor, particle, particle_prefix in self._iter_sensor_particles():
-            for viewing in self.parameters.viewings:
+            for viewing in self.sensor_viewings(sensor):
                 yield sensor, particle, viewing, particle_prefix
 
     def _download_data(self, show_progress: bool = True) -> pd.DataFrame:
+        self.check_viewings()
+        self.check_energy_changes()
         df_rows = []
         keys = []
         for index, row in self.df_times.iterrows():
@@ -295,13 +325,11 @@ class VDA:
                 if len(particles) == 0:
                     continue
                 
-                for viewing in self.parameters.viewings:
+                for viewing in self.sensor_viewings(sensor):
                     data = self._load_observer_data(
-                        sensor, row[self.START_TIME_COLNAME], row[self.END_TIME_COLNAME], viewing
+                        sensor, row[self.START_TIME_COLNAME], row[self.END_TIME_COLNAME], viewing, particles
                     )
                     for particle, (df_particle, _) in data.items():
-                        if particle not in particles:
-                            continue
                         df_particle = df_particle[
                             (df_particle.index >= row[self.START_TIME_COLNAME])
                             & (df_particle.index <= row[self.END_TIME_COLNAME])
@@ -384,6 +412,8 @@ class VDA:
         return df_grouped
 
     def group_energy_channels(self):
+        self.check_viewings()
+        self.check_energy_changes()
         grouped_frames = []
         for sensor, particle, viewing, particle_prefix in self._iter_sensor_particle_viewings():
             df_temp = self._group_channels_de(
@@ -636,7 +666,7 @@ class VDA:
         index = []
         for sensor, particle, particle_prefix in self._iter_sensor_particles():
             for channel in list(
-                self.df_grouped[sensor][particle][self.parameters.viewings[0]][
+                self.df_grouped[sensor][particle][self.sensor_viewings(sensor)[0]][
                     particle_prefix
                 ].columns
             ):

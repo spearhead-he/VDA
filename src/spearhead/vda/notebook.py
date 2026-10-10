@@ -17,6 +17,7 @@ from sunpy import log as sunpy_log
 from . import views
 from .analysis import VDA
 from .conf import ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
+from .observers import OBSERVERS
 
 
 def _show_figure(fig) -> None:
@@ -80,6 +81,10 @@ class VDA_notebook:
     @staticmethod
     def _note(text):
         return widgets.HTML(f"<i>{html.escape(text)}</i>")
+
+    @staticmethod
+    def _error_text(text):
+        return f'<span style="color: red"><b>Error:</b> {html.escape(text)}</span>'
 
     def _bind(self, widget, parameter):
         """Sets the parameter to the value of the widget when it changes"""
@@ -224,8 +229,10 @@ class VDA_notebook:
 
     ############### Data tab ###############
     def _data_tab(self):
+        self._wrapper_viewings = widgets.VBox([self._viewings_widget()])
         return widgets.VBox([
-            self._section("Viewings", self._viewings_widget()),
+            self._section("Observer", self._observer_widget()),
+            self._section("Viewings", self._wrapper_viewings),
             self._section("Resampling", self._text_widget(
                 "resample_frequency", "Resample frequency:",
                 "Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling")),
@@ -235,6 +242,24 @@ class VDA_notebook:
                           self._text_widget("save_data_filepath", "Save the data to:",
                                             "Path to .pkl - Leave blank to not save the data")),
         ])
+
+    def _observer_widget(self):
+        w = widgets.Dropdown(options=[(observer.label, name) for name, observer in OBSERVERS.items()],
+                             value=self.parameters.observer,
+                             description="Spacecraft:",
+                             style=self._style)
+
+        # error of the data of the observer, e.g. no data for the first event
+        self._observer_error = widgets.HTML()
+
+        def on_change(traitlet):
+            # the viewings and grouped channels are reset to the defaults of the new observer
+            self.parameters.observer = traitlet["new"]
+            self._wrapper_viewings.children = [self._viewings_widget()]
+            self._wrapper_channels.children = [self._channels_section()]
+
+        w.observe(on_change, names="value")
+        return widgets.VBox([w, self._observer_error])
 
     def _viewings_widget(self):
         checkboxes = []
@@ -246,7 +271,17 @@ class VDA_notebook:
             w.observe(lambda traitlet, viewing=viewing: self._select_viewing(viewing, traitlet["new"]),
                       names="value")
             checkboxes.append(w)
-        return widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})] + checkboxes)
+        wgt_checkboxes = widgets.HBox([widgets.Label("Viewings: ", style={"description_width": "max-content"})]
+                                      + checkboxes)
+        notes = []
+        descriptions = self.vda.observer.VIEWING_DESCRIPTIONS
+        if descriptions:
+            notes.append(self._note("; ".join(f"{viewing}: {text}" for viewing, text in descriptions.items())))
+        sensor_viewings = self.vda.observer.SENSOR_VIEWINGS
+        if any(set(v) != set(self.parameters.AVAILABLE_VIEWINGS) for v in sensor_viewings.values()):
+            text = "; ".join(f"{sensor.upper()}: {', '.join(v)}" for sensor, v in sensor_viewings.items())
+            notes.append(self._note(f"Viewings of each sensor: {text}"))
+        return widgets.VBox([wgt_checkboxes, *notes]) if notes else wgt_checkboxes
 
     def _select_viewing(self, viewing, selected):
         """Adds or removes a viewing. The checkboxes keep the order of AVAILABLE_VIEWINGS"""
@@ -257,12 +292,46 @@ class VDA_notebook:
 
     ############### Energy channels tab ###############
     def _channels_tab(self):
+        self._wrapper_channels = widgets.VBox([self._channels_section()])
+        return self._wrapper_channels
+
+    def _channels_section(self):
         # the energy ranges of the channels are the same for all the events
         start, end = self.parameters.date_ranges[0]
-        self.vda.construct_energies_df(start, end)
+        # without data, the channels are listed without their energy ranges
+        self.vda.df_energies = None
+        error = ""
+        try:
+            self.vda.construct_energies_df(start, end)
+        except Exception as e:
+            self.vda.df_energies = None
+            error = self._error_text(
+                f"{e}. The energy ranges of the {self.vda.observer.label} channels could not be read from the data "
+                f"of the first event: choose another spacecraft, or change the events and read the channels again."
+            )
+        self._observer_error.value = error
+        notes = [
+            self._note(f"{self.vda.observer.label} {sensor.upper()}: the energy ranges of the channels changed on "
+                       f"{date:%Y-%m-%d} ({reason}). They are read from the first event, so the events with "
+                       f"{sensor.upper()} channels must all be before or all after this date.")
+            for sensor, changes in self.vda.observer.ENERGY_CHANGES.items()
+            for date, reason in changes
+        ]
+        wgt_channel_groups = self._channel_groups_widget()
+        # without the data of the observer the grouped channels cannot be changed
+        self._set_enabled(wgt_channel_groups, not error)
+        wgt_error = []
+        if error:
+            btn_retry = widgets.Button(description="Read the channels again",
+                                       tooltip="Read the energy ranges of the channels from the first event",
+                                       layout=widgets.Layout(width="max-content"))
+            btn_retry.on_click(lambda _: setattr(self._wrapper_channels, "children", [self._channels_section()]))
+            wgt_error = [widgets.HBox([widgets.HTML(error), btn_retry])]
         return self._section(
             "Grouped energy channels (select multiple channels with Ctrl+click)",
-            self._channel_groups_widget(),
+            *wgt_error,
+            *notes,
+            wgt_channel_groups,
         )
 
     def _channel_options(self, sensor, species):
@@ -274,7 +343,12 @@ class VDA_notebook:
         particle_prefix = self.vda.PARTICLE_COLUMN_PREFIX[species]
         options = []
         for c in channels:
-            energies = df_energies.loc[(sensor, f"{particle_prefix}_{c}")]
+            key = (sensor, f"{particle_prefix}_{c}")
+            if key not in df_energies.index:
+                # a channel without energy range in the data
+                options.append((str(c), c))
+                continue
+            energies = df_energies.loc[key]
             options.append((f"{c}: {energies['Low Energy']:.3g}-{energies['High Energy']:.3g} MeV", c))
         return options
 
@@ -470,6 +544,9 @@ class VDA_notebook:
         """Creates the events, downloads (or loads) their data and groups the energy channels"""
         self.vda.construct_times_df()
         self._show(self.vda.df_times)
+        if getattr(self.vda, "df_energies", None) is None:
+            # not read by the parameters form, e.g. without data for its spacecraft and first event
+            self.vda.construct_energies_df()
         self.vda.construct_particles_df()
         self.vda.group_energy_channels()
         self._show(self.vda.df_grouped)
