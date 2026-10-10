@@ -37,6 +37,7 @@ from spearhead.vda import VDA, VDA_parameters, views
 
 parameters = VDA_parameters()
 parameters.input_filepath = "examples/datetime_range_example.csv"
+parameters.observer = "solo"            # Solar Orbiter (or "sta", "psp", "soho", "wind", "bepi")
 parameters.viewings = ["sun"]
 parameters.channel_groups = {
     "protons": {

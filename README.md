@@ -11,14 +11,14 @@
   - [About](#about)
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
-  - [What's new in v0.4.0](#whats-new-in-v040)
+  - [What's new in v0.5.0](#whats-new-in-v050)
   - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
 
 ## About
 
-The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Energetic Particle (SEP) events. The events are provided to the tool as datetime ranges or reference times, from a file or entered in the Notebook. The user can parameterize the given Notebook and control which particle species are used, the sensor from which they are detected, the viewings to be considered, and the background window of each event.
+The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Energetic Particle (SEP) events. The events are provided to the tool as datetime ranges or reference times, from a file or entered in the Notebook. The user can parameterize the given Notebook and control the spacecraft whose data are used (Solar Orbiter, STEREO-A, Parker Solar Probe, SOHO, Wind or BepiColombo), which particle species are used, the sensor from which they are detected, the viewings to be considered, and the background window of each event.
 
 The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is the release time and apparent path length of each inputted event, with a plot of its VDA analysis.
 
@@ -71,7 +71,7 @@ See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from p
 
 ## Documentation
 
-- [User guide](docs/user_guide.md): the Notebook, the parameters, the events files, background windows, onset selection and results
+- [User guide](docs/user_guide.md): the Notebook, the spacecraft and their instruments, the parameters, the events files, background windows, onset selection and results
 - [Using the VDA tool without the notebook](docs/library.md): the analysis code in scripts
 - [Changelog](CHANGELOG.md)
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spearhead-vda"
-description = "Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events with Solar Orbiter EPD data"
+description = "Velocity Dispersion Analysis (VDA) of Solar Energetic Particle events with data of Solar Orbiter, STEREO-A, Parker Solar Probe, SOHO, Wind and BepiColombo"
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]

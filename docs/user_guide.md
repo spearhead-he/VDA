@@ -1,6 +1,7 @@
 # VDA tool user guide
 
 - [Notebook](#notebook)
+- [Observers](#observers)
 - [Parameters](#parameters)
 - [Events](#events)
 - [Background window](#background-window)
@@ -111,7 +112,7 @@ The plots of the interactive onset selection show the background level and the t
 
 ## Onset selection
 
-- **Use all**: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used. With the checkboxes the order is sun, asun, north, south, omni; a different priority can be set with `tool.parameters.viewings`, e.g. `["north", "sun"]`.
+- **Use all**: for each grouped energy channel, the onset of the first viewing (in the order of the viewings) with a determined onset is used. With the checkboxes the order is that of the checkboxes (e.g. sun, asun, north, south, omni for Solar Orbiter); a different priority can be set with `tool.parameters.viewings`, e.g. `["north", "sun"]`.
 - **Interactive**: the determined onsets are shown one channel at a time, chosen with the event and channel dropdowns or the "Previous" / "Next" buttons, and the viewing whose onset is used is selected per channel (or "None", to leave the channel out). The selection starts from the viewings of "Use all".
 
 ## Results
