@@ -4,10 +4,11 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-10
+
 ### Added
 - Poisson-CUSUM onset determination method (`onset_method = "poisson_cusum"`), from pyonset, with the parameters `cusum_minutes` and `sigma_multiplier`. The onset plots show its background level, μd and the k and h parameters.
-
-- Observers: the spacecraft of the analysis is the parameter `observer` (for now only `"solo"`, Solar Orbiter). The module `spearhead.vda.observers` describes each observer (sensors, particles, energy channels, viewings, default grouped channels), loads its data and gives its distance from the Sun.
+- Observers: the spacecraft of the analysis is the parameter `observer` (default `"solo"`, Solar Orbiter). The module `spearhead.vda.observers` describes each observer (sensors, particles, energy channels, viewings, default grouped channels), loads its data and gives its distance from the Sun.
 - STEREO-A observer (`observer = "sta"`): IMPACT/HET (omni viewing) and IMPACT/SEPT (sun, asun, north and south viewings), loaded with seppy. Its distance from the Sun is from JPL Horizons. Its default grouped channels are the consecutive HET channels, in groups of three for protons and two for electrons (a single channel left at the end joins the previous group). The observer is selected in the Data tab of the parameters form; without data of the observer for the first event, the form shows an error in red and grays out the grouped channels.
 - Parker Solar Probe observer (`observer = "psp"`): ISOIS/EPI-Hi HET, with the viewings A (sunward) and B (anti-sunward), from the 1-minute rates (`PSP_ISOIS-EPIHI_L2-HET-RATES60`) loaded with seppy. The proton channels are 3 to 11 (the others have no data), and the electron data are count rates divided by the channel width. Its distance from the Sun is from JPL Horizons.
 - SOHO observer (`observer = "soho"`): ERNE-HED protons (`SOHO_ERNE-HED_L2-1MIN`, 13-64 MeV) and COSTEP-EPHIN electrons (level 2 data of the University of Kiel, E150 and E1300 with their energy ranges of the date; events on both sides of the change of the E1300 range, on 4 October 2017, raise an error), loaded with seppy, with the omni viewing. Its distance from the Sun is from JPL Horizons.
@@ -21,7 +22,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - Setting `onset_method` sets `onset_method_parameters` to the defaults of the method, and the parameters form shows the parameters of the selected method. The onset methods are listed with their names (Sigma threshold, Poisson-CUSUM).
 - Parameters of another onset method raise an error when the onsets are calculated.
 - `viewings` and `channel_groups` default to `None`, replaced by the default viewings and grouped channels of the observer (unchanged for Solar Orbiter). Setting `observer` sets them to the defaults of the new observer.
-- `seppy` (0.5.1 or newer) is a requirement again, for the STEREO-A data (it was already installed by pyonset).
+- `seppy` (0.5.1 or newer) is a requirement again, for the data of the new spacecraft (it was already installed by pyonset).
 - `VDA_parameters.AVAILABLE_SENSORS_PARTICLES`, `AVAILABLE_CHANNELS` and `AVAILABLE_VIEWINGS` are those of the observer.
 
 ### Fixed
@@ -30,6 +31,12 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 ### Removed
 - The unused and not selectable Poisson-CUSUM bootstrap method (`_onset_detection_poisson_cusum_bootstrap`).
 - The Solar Orbiter constants of `conf` (`AVAILABLE_SENSORS_PARTICLES`, `AVAILABLE_CHANNELS`, `AVAILABLE_VIEWINGS`, `DEFAULT_CHANNEL_GROUPS`) and of `VDA` (`RAW_FLUX_COLUMN`, `RAW_ENERGY_BINS_COLUMN`): they are attributes of `observers.SolarOrbiter`.
+
+### Upgrading from 0.5.0
+- Update the installation once, from the folder of the tool: `pip install -r requirements.txt` (or `pip install -e ".[notebook]"`). This installs seppy 0.5.1 or newer, used for the data of the new spacecraft.
+- The Sigma threshold onsets, and so the release times, are one data point earlier than with 0.5.0 (e.g. 5 minutes with the default resampling); the apparent path lengths are unchanged when all the onsets move by the same time.
+- The Solar Orbiter constants of `spearhead.vda.conf` (`AVAILABLE_SENSORS_PARTICLES`, `AVAILABLE_CHANNELS`, `AVAILABLE_VIEWINGS`, `DEFAULT_CHANNEL_GROUPS`) are attributes of `spearhead.vda.observers.SolarOrbiter`, or of the parameters (`VDA_parameters.AVAILABLE_SENSORS_PARTICLES` etc., for the selected observer).
+- Data files saved with 0.5.0 (`save_data_filepath`) can still be loaded, with `observer = "solo"`: they are Solar Orbiter data, the only spacecraft of 0.5.0.
 
 ## [0.5.0] - 2026-10-09
 
@@ -132,7 +139,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
-[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/spearhead-he/VDA/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/spearhead-he/VDA/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/spearhead-he/VDA/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/spearhead-he/VDA/compare/v0.2.0...v0.3.0

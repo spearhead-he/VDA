@@ -26,7 +26,7 @@ or directly from GitHub, without the notebook:
 pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA"
 ```
 
-A specific release is installed with its tag, e.g. `pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA@v0.5.0"`.
+A specific release is installed with its tag, e.g. `pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA@v0.6.0"`.
 
 The extra `[notebook]` (e.g. `pip install -e ".[notebook]"`) also installs the notebook dependencies (Jupyter and ipywidgets), needed by `spearhead.vda.notebook`. The extra `[test]` installs the tools to run the tests (`pytest tests/`). The installed version is `spearhead.vda.__version__`.
 
