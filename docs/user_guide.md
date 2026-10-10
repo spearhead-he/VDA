@@ -67,7 +67,7 @@ The parameters form has five tabs:
 
 - **Events**: the events file, or the datetime ranges of the events if no file is given (see [Events](#events)). For files with reference times, the data range is set with the hours prior to and after the reference time.
 - **Data**:
-  - the observer (spacecraft). Changing it sets the viewings and the grouped channels to the defaults of the observer
+  - the observer (spacecraft). Changing it sets the viewings and the grouped channels to the defaults of the observer. The energy ranges of its channels are read from the data of the first event: if there are no data (e.g. BepiColombo before 2020), an error is shown in red and the grouped channels (Energy channels tab) are grayed out until another spacecraft is chosen, or the events are changed and the channels are read again ("Read the channels again" button); the rest of the form can still be used
   - the viewings
   - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), blank for no resampling)
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.

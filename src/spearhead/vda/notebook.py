@@ -82,6 +82,10 @@ class VDA_notebook:
     def _note(text):
         return widgets.HTML(f"<i>{html.escape(text)}</i>")
 
+    @staticmethod
+    def _error_text(text):
+        return f'<span style="color: red"><b>Error:</b> {html.escape(text)}</span>'
+
     def _bind(self, widget, parameter):
         """Sets the parameter to the value of the widget when it changes"""
         widget.observe(lambda traitlet: setattr(self.parameters, parameter, traitlet["new"]), names="value")
@@ -245,6 +249,9 @@ class VDA_notebook:
                              description="Spacecraft:",
                              style=self._style)
 
+        # error of the data of the observer, e.g. no data for the first event
+        self._observer_error = widgets.HTML()
+
         def on_change(traitlet):
             # the viewings and grouped channels are reset to the defaults of the new observer
             self.parameters.observer = traitlet["new"]
@@ -252,7 +259,7 @@ class VDA_notebook:
             self._wrapper_channels.children = [self._channels_section()]
 
         w.observe(on_change, names="value")
-        return w
+        return widgets.VBox([w, self._observer_error])
 
     def _viewings_widget(self):
         checkboxes = []
@@ -291,7 +298,18 @@ class VDA_notebook:
     def _channels_section(self):
         # the energy ranges of the channels are the same for all the events
         start, end = self.parameters.date_ranges[0]
-        self.vda.construct_energies_df(start, end)
+        # without data, the channels are listed without their energy ranges
+        self.vda.df_energies = None
+        error = ""
+        try:
+            self.vda.construct_energies_df(start, end)
+        except Exception as e:
+            self.vda.df_energies = None
+            error = self._error_text(
+                f"{e}. The energy ranges of the {self.vda.observer.label} channels could not be read from the data "
+                f"of the first event: choose another spacecraft, or change the events and read the channels again."
+            )
+        self._observer_error.value = error
         notes = [
             self._note(f"{self.vda.observer.label} {sensor.upper()}: the energy ranges of the channels changed on "
                        f"{date:%Y-%m-%d} ({reason}). They are read from the first event, so the events with "
@@ -299,10 +317,21 @@ class VDA_notebook:
             for sensor, changes in self.vda.observer.ENERGY_CHANGES.items()
             for date, reason in changes
         ]
+        wgt_channel_groups = self._channel_groups_widget()
+        # without the data of the observer the grouped channels cannot be changed
+        self._set_enabled(wgt_channel_groups, not error)
+        wgt_error = []
+        if error:
+            btn_retry = widgets.Button(description="Read the channels again",
+                                       tooltip="Read the energy ranges of the channels from the first event",
+                                       layout=widgets.Layout(width="max-content"))
+            btn_retry.on_click(lambda _: setattr(self._wrapper_channels, "children", [self._channels_section()]))
+            wgt_error = [widgets.HBox([widgets.HTML(error), btn_retry])]
         return self._section(
             "Grouped energy channels (select multiple channels with Ctrl+click)",
+            *wgt_error,
             *notes,
-            self._channel_groups_widget(),
+            wgt_channel_groups,
         )
 
     def _channel_options(self, sensor, species):
@@ -314,7 +343,12 @@ class VDA_notebook:
         particle_prefix = self.vda.PARTICLE_COLUMN_PREFIX[species]
         options = []
         for c in channels:
-            energies = df_energies.loc[(sensor, f"{particle_prefix}_{c}")]
+            key = (sensor, f"{particle_prefix}_{c}")
+            if key not in df_energies.index:
+                # a channel without energy range in the data
+                options.append((str(c), c))
+                continue
+            energies = df_energies.loc[key]
             options.append((f"{c}: {energies['Low Energy']:.3g}-{energies['High Energy']:.3g} MeV", c))
         return options
 
@@ -510,6 +544,9 @@ class VDA_notebook:
         """Creates the events, downloads (or loads) their data and groups the energy channels"""
         self.vda.construct_times_df()
         self._show(self.vda.df_times)
+        if getattr(self.vda, "df_energies", None) is None:
+            # not read by the parameters form, e.g. without data for its spacecraft and first event
+            self.vda.construct_energies_df()
         self.vda.construct_particles_df()
         self.vda.group_energy_channels()
         self._show(self.vda.df_grouped)
