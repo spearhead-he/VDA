@@ -4,6 +4,9 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+- pyonset is installed from PyPI (`pyonset>=1.2.2`) instead of GitHub, so installing the tool from its folder (or from requirements.txt) no longer needs `git`.
+
 ## [0.7.0] - 2026-10-13
 
 ### Changed
