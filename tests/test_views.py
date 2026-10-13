@@ -10,22 +10,11 @@ import pandas as pd
 import pytest
 
 from spearhead.vda import observers, views
-from tests.helpers import epd_like_data, make_vda
+from tests.helpers import make_vda, rising_epd_data
 
 START, END = datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 20)
+# the rise of the synthetic data, two hours after the start
 RISE = pd.Timestamp("2021-10-28 16:00")
-
-
-def rising_epd_data(**kwargs):
-    """Data as returned by epd_load, with a rise at 16:00 in the sun viewing only"""
-    index = pd.date_range(START, END, freq="1min")
-    df_protons, df_electrons, energies = epd_like_data(index, kwargs["sensor"])
-    noise = np.where(np.arange(len(index)) % 2 == 0, 1.0, 1.2)
-    rise = np.where(index >= RISE, 100.0, 0.0) if kwargs["viewing"] == "sun" else 0.0
-    for df in (df_protons, df_electrons):
-        for column in df.columns:
-            df[column] = noise + rise
-    return df_protons, df_electrons, energies
 
 
 @pytest.fixture

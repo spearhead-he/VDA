@@ -39,6 +39,19 @@ def epd_like_data(index, sensor="het"):
     return particle(proton_flux, 3), particle("Electron_Flux", 2), energies
 
 
+def rising_epd_data(**kwargs):
+    """Data as returned by epd_load, from the start to the end date at 1 minute, with a rise two hours after
+    the start in the sun viewing only"""
+    index = pd.date_range(kwargs["startdate"], kwargs["enddate"], freq="1min")
+    df_protons, df_electrons, energies = epd_like_data(index, kwargs["sensor"])
+    noise = np.where(np.arange(len(index)) % 2 == 0, 1.0, 1.2)
+    rise = np.where(index >= index[0] + pd.Timedelta(hours=2), 100.0, 0.0) if kwargs["viewing"] == "sun" else 0.0
+    for df in (df_protons, df_electrons):
+        for column in df.columns:
+            df[column] = noise + rise
+    return df_protons, df_electrons, energies
+
+
 def strip_figure_text(fig):
     """
     Remove all text elements that vary across matplotlib versions.
