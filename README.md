@@ -72,6 +72,7 @@ See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from p
 
 - [User guide](docs/user_guide.md): the Notebook, the spacecraft and their instruments, the parameters, the events files, background windows, onset selection and results
 - [Using the VDA tool without the notebook](docs/library.md): the analysis code in scripts
+- [Development](docs/development.md): installation for development, the tests and the baseline image of the VDA plot
 - [Changelog](CHANGELOG.md)
 
 ## Contributing
