@@ -1,4 +1,57 @@
-# tests/helpers.py
+"""Helpers of the tests: parameters, files and data without downloads, and figures for image comparison"""
+import numpy as np
+import pandas as pd
+
+from spearhead.vda import VDA, VDA_parameters
+
+
+def make_vda(**parameters) -> VDA:
+    p = VDA_parameters()
+    for name, value in parameters.items():
+        setattr(p, name, value)
+    return VDA(p)
+
+
+def write_csv(tmp_path, name, text) -> str:
+    path = tmp_path / name
+    path.write_text(text)
+    return str(path)
+
+
+def epd_like_data(index, sensor="het"):
+    """Data as returned by epd_load: protons with 3 channels and electrons with 2"""
+    proton_flux, proton_bins = {"het": ("H_Flux", "H_Bins"), "ept": ("Ion_Flux", "Ion_Bins")}[sensor]
+
+    def particle(flux_column, n_channels):
+        columns = pd.MultiIndex.from_tuples(
+            [(flux_column, f"{flux_column}_{c}") for c in range(n_channels)]
+            + [("Uncertainty", f"Uncertainty_{c}") for c in range(n_channels)]
+        )
+        return pd.DataFrame(np.arange(len(index) * 2 * n_channels, dtype=float).reshape(len(index), -1),
+                            index=index, columns=columns)
+
+    energies = {
+        f"{proton_bins}_Low_Energy": np.array([1.0, 2.0, 4.0]),
+        f"{proton_bins}_Width": np.array([1.0, 2.0, 4.0]),
+        "Electron_Bins_Low_Energy": np.array([0.5, 1.0]),
+        "Electron_Bins_Width": np.array([0.5, 1.0]),
+    }
+    return particle(proton_flux, 3), particle("Electron_Flux", 2), energies
+
+
+def rising_epd_data(**kwargs):
+    """Data as returned by epd_load, from the start to the end date at 1 minute, with a rise two hours after
+    the start in the sun viewing only"""
+    index = pd.date_range(kwargs["startdate"], kwargs["enddate"], freq="1min")
+    df_protons, df_electrons, energies = epd_like_data(index, kwargs["sensor"])
+    noise = np.where(np.arange(len(index)) % 2 == 0, 1.0, 1.2)
+    rise = np.where(index >= index[0] + pd.Timedelta(hours=2), 100.0, 0.0) if kwargs["viewing"] == "sun" else 0.0
+    for df in (df_protons, df_electrons):
+        for column in df.columns:
+            df[column] = noise + rise
+    return df_protons, df_electrons, energies
+
+
 def strip_figure_text(fig):
     """
     Remove all text elements that vary across matplotlib versions.

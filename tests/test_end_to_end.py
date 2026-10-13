@@ -1,5 +1,5 @@
-import filecmp
-import math
+"""End-to-end test of the default event (network test): downloads the Solar Orbiter data and compares the VDA plot with
+its baseline image. The commands to run it and to update the baseline image are in docs/development.md."""
 import matplotlib
 import pytest
 
@@ -15,22 +15,12 @@ simplefilter(action='ignore', category=PerformanceWarning)
 filterwarnings(action='ignore', message="Discarding nonzero nanoseconds in conversion")
 
 
-"""
-Install the package with the dependencies for tests, from the base directory of the repository:
-pip install -e ".[notebook,test]"
-
-To create/update the baseline images, run the following command from the base package dir:
-pytest --mpl-generate-path=tests/baseline tests/test_.py
-
-To run the tests locally, go to the base directory of the repository and run:
-pytest -rP --mpl --mpl-baseline-path=baseline --mpl-baseline-relative --mpl-generate-summary=html tests/test_.py
-"""
-
 # skip image comparison tests for matplotlib < 3.11
 _mpl_old = (int(matplotlib.__version__.split(".")[1])) < 11
 _image_compare = pytest.mark.mpl_image_compare(remove_text=True, deterministic=True) if not _mpl_old else lambda f: f
 
 
+@pytest.mark.network
 @_image_compare
 def test_vda_default():
     vda_parameters = VDA_parameters()
