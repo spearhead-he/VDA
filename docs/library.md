@@ -8,7 +8,7 @@ The analysis code can be used in scripts or other notebooks:
 | `spearhead.vda.conf` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
 | `spearhead.vda.observers` | The observers (spacecraft): their sensors, channels and viewings, data loading and distance from the Sun |
 | `spearhead.vda.views` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
-| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_tool.ipynb` (parameters form, analysis steps and their widgets) |
+| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_multi_event.ipynb` (parameters form, analysis steps and their widgets) |
 
 `VDA`, `VDA_parameters` and `OnsetSelection` can also be imported directly from `spearhead.vda`.
 

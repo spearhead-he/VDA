@@ -48,10 +48,14 @@ With the comparison of the VDA plot with its baseline image (matplotlib 3.11 or 
 pytest -rP --mpl --mpl-baseline-path=baseline --mpl-baseline-relative --mpl-generate-summary=html tests/
 ```
 
-The notebook runs headless with nbmake (it downloads data):
+The notebooks run headless with nbmake (they download data), all of them or one:
 
 ```bash
-pytest --nbmake vda_tool.ipynb
+pytest --nbmake *.ipynb
+```
+
+```bash
+pytest --nbmake vda_multi_event.ipynb
 ```
 
 ## Baseline image
