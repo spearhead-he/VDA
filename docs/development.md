@@ -25,6 +25,7 @@ The tests are in `tests/`, one file per part of the tool:
 | `test_observers.py` | Observers (spacecraft): data loading, viewings and default grouped channels |
 | `test_onset_selection.py` | Onset selection |
 | `test_vda_fit.py` | VDA fit and plot |
+| `test_views.py` | Plots of the background window and of the detected onsets, and their files |
 | `test_parameters.py` | Parameters |
 | `test_notebook.py` | Widgets of the notebook interface |
 | `test_end_to_end.py` | The default event, from the download of the data to the VDA plot, compared with its baseline image |
