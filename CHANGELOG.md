@@ -4,8 +4,14 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-13
+
 ### Changed
 - pyonset is installed from PyPI (`pyonset>=1.2.2`) instead of GitHub, so installing the tool from its folder (or from requirements.txt) no longer needs `git`.
+
+### Upgrading from 0.7.0
+- Update the installation once, from the folder of the tool: `pip install -r requirements.txt` (or `pip install -e ".[notebook]"`). This replaces pyonset from GitHub with pyonset 1.2.2 or newer from PyPI.
+- The results are unchanged.
 
 ## [0.7.0] - 2026-10-13
 
@@ -158,7 +164,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
-[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/spearhead-he/VDA/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/spearhead-he/VDA/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/spearhead-he/VDA/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/spearhead-he/VDA/compare/v0.4.0...v0.5.0

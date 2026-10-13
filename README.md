@@ -11,7 +11,7 @@
   - [About](#about)
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
-  - [What's new in v0.7.0](#whats-new-in-v070)
+  - [What's new in v0.8.0](#whats-new-in-v080)
   - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
@@ -58,12 +58,9 @@ tool.run_vda()               # results and plots
 
 The events are given with a .csv file (datetime ranges or reference times, see the [examples](examples/)) or entered in the form. See the [user guide](docs/user_guide.md) for details.
 
-## What's new in v0.7.0
+## What's new in v0.8.0
 
-- Python 3.11 or newer is required: Python 3.10 reaches its end of life in October 2026.
-- In the VDA plot, the onsets of the electron channels are shown as stars and those of the proton channels as circles.
-- The data of an event are kept in time order when one of its viewings has a data gap at its start.
-- The tests are organized in one file per part of the tool, and the commands to run them are in [Development](docs/development.md).
+- [pyonset](https://pypi.org/project/pyonset/) is installed from PyPI: installing the tool no longer needs `git`.
 
 See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
