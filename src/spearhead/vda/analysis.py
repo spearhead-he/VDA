@@ -344,7 +344,8 @@ class VDA:
                             keys=[(sensor, particle, viewing, self.PARTICLE_COLUMN_PREFIX[particle])],
                             axis="columns",
                         )
-                        df_row = pd.concat([df_row, df_particle], axis="columns")
+                        # the times of all the sensors and viewings, in order (e.g. with a data gap in one of them)
+                        df_row = pd.concat([df_row, df_particle], axis="columns", sort=True)
             df_rows.append(df_row)
 
         if show_progress:

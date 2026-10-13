@@ -1,9 +1,12 @@
 """Grouping of the energy channels and saved data"""
+from datetime import datetime
+
 import pandas as pd
 import pytest
 
 from spearhead.vda import VDA, VDA_parameters
-from tests.helpers import make_vda
+from spearhead.vda import observers
+from tests.helpers import make_vda, rising_epd_data
 
 
 def test_group_channels_weighted_by_bin_width():
@@ -15,6 +18,27 @@ def test_group_channels_weighted_by_bin_width():
     # I = sum(I_n * dE_n) / sum(dE_n)
     assert grouped["group 1"].tolist() == pytest.approx([(1 * 1 + 3 * 3) / 4, (2 * 1 + 4 * 3) / 4, (3 * 1 + 5 * 3) / 4])
     assert grouped["group 2"].tolist() == pytest.approx([10.0, 10.0, 10.0])
+
+
+def test_data_times_in_order_with_a_gap(monkeypatch):
+    # the sun viewing starts 10 minutes later: its times come first, but the data are in time order
+    def epd_load(**kwargs):
+        data = rising_epd_data(**kwargs)
+        if kwargs["viewing"] == "sun":
+            data = tuple(df[df.index >= "2021-10-28 14:10"] for df in data[:2]) + (data[2],)
+        return data
+
+    monkeypatch.setattr(observers, "epd_load", epd_load)
+    v = make_vda(date_ranges=[(datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 15))], resample_frequency="",
+                 viewings=["sun", "north"],
+                 channel_groups={"protons": {"HET/protons Channel 1": {"sensor": "het", "channels": [1, 2]}}})
+    v.construct_times_df()
+    v.construct_energies_df()
+    v.construct_particles_df()
+    times = v.df_data.loc[1].index
+    assert times.is_monotonic_increasing
+    assert times[0] == pd.Timestamp("2021-10-28 14:00") and len(times) == 61
+    assert v.df_data.loc[1]["het"]["protons"]["sun"]["H_Flux"].loc[:"2021-10-28 14:09"].isna().all().all()
 
 
 @pytest.mark.parametrize("saved_attrs, expected_frequency, message", [

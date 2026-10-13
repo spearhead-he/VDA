@@ -11,6 +11,9 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 ### Removed
 - Support for Python 3.10, which reaches its end of life in October 2026: the tool requires Python 3.11 or newer. The `notebook` extra requires ipykernel 7.4 or newer on all Python versions.
 
+### Fixed
+- The data of the sensors and viewings of an event are kept in time order also with a data gap at the start of one of them, as future pandas versions will not sort them by default (pandas deprecation warning).
+
 ## [0.6.0] - 2026-10-10
 
 ### Added
