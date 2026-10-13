@@ -4,6 +4,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-13
+
 ### Changed
 - VDA plot: the onsets of the electron channels are shown as stars, those of the proton channels as circles, with a legend entry for each. `vda_fits` records the particle of each point (`"particles"`).
 - Tests: the offline tests are in one file per part of the tool (`tests/test_onsets.py`, `test_events.py`, `test_data.py`, `test_observers.py`, `test_onset_selection.py`, `test_vda_fit.py`, `test_parameters.py`, `test_notebook.py`) instead of `tests/test_units.py`, with new tests of the plots (`test_views.py`) and of the notebook interface (`test_notebook.py`: the parameters form, the background window and onset selection widgets, and the steps of the analysis), and the end-to-end test is `tests/test_end_to_end.py`. The end-to-end test, which downloads data, is marked `network`: `pytest -m "not network" tests/` runs only the offline tests. The commands to run the tests and update the baseline image are in [docs/development.md](docs/development.md).
@@ -13,6 +15,10 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ### Fixed
 - The data of the sensors and viewings of an event are kept in time order also with a data gap at the start of one of them, as future pandas versions will not sort them by default (pandas deprecation warning).
+
+### Upgrading from 0.6.0
+- Python 3.11 or newer is required. With Python 3.10, create a new environment with a newer Python (e.g. `conda create --name vda python=3.12`) and install the tool in it, from the folder of the tool: `pip install -r requirements.txt`. With Python 3.11 or newer, the installation does not need to be updated.
+- The results are unchanged. In the VDA plot, the onsets of the electron channels are stars.
 
 ## [0.6.0] - 2026-10-10
 
@@ -149,7 +155,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
-[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/spearhead-he/VDA/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/spearhead-he/VDA/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/spearhead-he/VDA/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/spearhead-he/VDA/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/spearhead-he/VDA/compare/v0.3.0...v0.4.0
