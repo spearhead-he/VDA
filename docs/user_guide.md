@@ -74,7 +74,7 @@ The parameters form has five tabs:
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.
 - **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$. A note shows when the energy ranges of a sensor changed on a date (SOHO EPHIN, see [Observers](#observers)).
 - **Onsets**: the onset determination method and its parameters (see [Onset determination](#onset-determination)), the default background window, and the onset selection method.
-- **Views/Plots**: font sizes, saving of the VDA plots as .png files, and display of the intermediate tables.
+- **Views/Plots**: font sizes, saving of the VDA plots as .png files, reference times for the VDA plots, and display of the intermediate tables.
 
 ## Events
 
@@ -117,4 +117,4 @@ The plots of the interactive onset selection show the background level and the t
 
 ## Results
 
-For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot (onsets of the proton channels as circles, of the electron channels as stars), which can also be saved as a .png file (Views/Plots tab). The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.
+For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot (onsets of the proton channels as circles, of the electron channels as stars), which can also be saved as a .png file (Views/Plots tab). Reference times (e.g. SXR peak, type II and type III radio bursts), added in the Views/Plots tab with a label and a datetime ("Add Reference Time", also `tool.reference_times = [("SXR peak", datetime(2021, 10, 28, 15, 35))]`), are shown at inverse beta 0 in the VDA plot of the event whose data range contains them, with the fit line extended to inverse beta 0. The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.

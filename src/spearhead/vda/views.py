@@ -5,10 +5,12 @@ or widgets. The figures are saved only when a filename is given, and can be clos
 are no longer needed.
 """
 from datetime import timedelta
+from itertools import cycle
 from math import ceil
 
 import matplotlib
 import numpy as np
+import pandas as pd
 from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
@@ -141,11 +143,31 @@ def vda_plot_filename(vda, event_no) -> str:
     return f"{time_start_str}_{time_end_str}_{particles_str}_{freq_str}.png"
 
 
-def plot_vda(vda, event_no, filename=None) -> Figure:
-    """Plots the VDA fit of the event, computed by vda.compute_vda()"""
+# marker and color of each reference time, in order
+REFERENCE_STYLES = [("^", "tab:blue"), ("v", "tab:orange"), ("X", "tab:green"), ("D", "tab:red"), ("s", "tab:purple"),
+                    ("P", "tab:brown")]
+
+
+def _plot_references(ax, references) -> None:
+    """Reference times (e.g. SXR peak, type II and III radio bursts) at inverse beta 0, one legend entry each"""
+    marker_size = plt.rcParams["lines.markersize"] ** 2
+    for (label, time), (marker, color) in zip(references, cycle(REFERENCE_STYLES)):
+        ax.scatter([0], [pd.Timestamp(time).to_pydatetime()], marker=marker, color=color, s=2 * marker_size,
+                   label=label, zorder=3, clip_on=False)
+    ax.set_xlim(left=0)
+
+
+def plot_vda(vda, event_no, filename=None, references=None) -> Figure:
+    """Plots the VDA fit of the event, computed by vda.compute_vda().
+
+    references: optional list of (label, datetime) reference times (e.g. SXR peak, type II and III radio bursts),
+    shown at inverse beta 0, with the fit line extended to it
+    """
     fit = vda.vda_fits[event_no]
     inv_betas = fit["inv_betas"]
     a, b, b_error = fit["a"], fit["b"], fit["b_error"]
+    # the fit line and its band, from inverse beta 0 if there are reference times
+    fit_x = np.concatenate([[0], inv_betas]) if references else inv_betas
 
     def to_time(seconds):
         return fit["t0"] + timedelta(seconds=seconds)
@@ -167,18 +189,20 @@ def plot_vda(vda, event_no, filename=None) -> Figure:
                 label=particle.capitalize(),
             )
     ax.plot(
-        inv_betas,
-        [to_time(a * x + b) for x in inv_betas],
+        fit_x,
+        [to_time(a * x + b) for x in fit_x],
         label="Linear Regression",
         color="blue",
     )
     ax.fill_between(
-        inv_betas,
-        [to_time(a * x + b - 2 * b_error) for x in inv_betas],
-        [to_time(a * x + b + 2 * b_error) for x in inv_betas],
+        fit_x,
+        [to_time(a * x + b - 2 * b_error) for x in fit_x],
+        [to_time(a * x + b + 2 * b_error) for x in fit_x],
         color="blue",
         alpha=0.1,
     )
+    if references:
+        _plot_references(ax, references)
     fig.suptitle(f"Event {event_no} ({vda.df_grouped.loc[event_no].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
     ax.set_xlabel("Inverse Beta")
     ax.set_ylabel("Time")

@@ -4,6 +4,9 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+- Reference times in the VDA plot: optional (label, datetime) times, e.g. of the SXR peak or of type II and type III radio bursts, shown at inverse beta 0 with the fit line extended to it. In the notebook they are added in the Views/Plots tab ("Add Reference Time", or `tool.reference_times`), each shown in the plot of the event whose data range contains it; in scripts, `views.plot_vda(vda, event_no, references=[...])`.
+
 ### Changed
 - The notebook `vda_tool.ipynb` is renamed `vda_multi_event.ipynb` (the VDA of one or more events from one spacecraft).
 

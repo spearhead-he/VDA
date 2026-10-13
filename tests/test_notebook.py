@@ -287,6 +287,21 @@ def test_plots_tab(displayed):
     assert tool.parameters.view_dfs is True
 
 
+def test_reference_times(displayed):
+    tool = VDA_notebook()
+    tab = tool._plots_tab()
+    btn_add = find(tab, description="Add Reference Time")[0]
+    btn_add.click()
+    btn_add.click()
+    # new reference times at the start of the first event
+    assert tool.reference_times == [("Reference 1", datetime(2021, 10, 28, 14)), ("Reference 2", datetime(2021, 10, 28, 14))]
+    find(tab, widgets.Text, "Label:")[0].value = "SXR peak"
+    find(tab, description="time:")[0].value = datetime(2021, 10, 28, 15, 30)
+    find(tab, description="Remove")[1].click()
+    assert tool.reference_times == [("SXR peak", datetime(2021, 10, 28, 15, 30))]
+    assert len(find(tab, widgets.Text, "Label:")) == 1
+
+
 # ---------------------------------------------------------------- analysis steps
 
 def two_events_tool(**parameters):
@@ -386,3 +401,25 @@ def test_run_vda(displayed, monkeypatch, tmp_path, capsys):
         "2021-10-28_1400_2021-10-28_2000_het-protons_het-electrons_5min.png",
         "2021-11-09_1500_2021-11-09_2100_het-protons_het-electrons_5min.png",
     ]
+
+
+def test_run_vda_reference_times_of_each_event(displayed, monkeypatch):
+    monkeypatch.setattr(VDA, "define_spacecraft_parameters", lambda self: None)
+    monkeypatch.setattr(observers.SolarOrbiter, "distance", lambda self, time: 0.8 * u.AU)
+    plotted = {}
+    plot_vda = notebook.views.plot_vda
+
+    def record_references(vda, event_no, filename=None, references=None):
+        plotted[event_no] = references
+        return plot_vda(vda, event_no, filename, references)
+
+    monkeypatch.setattr(notebook.views, "plot_vda", record_references)
+    tool = two_events_tool()
+    tool.save_plots = False
+    tool.reference_times = [("SXR peak", datetime(2021, 10, 28, 15)), ("type II", datetime(2021, 11, 9, 16)),
+                            ("Outside", datetime(2021, 11, 10))]
+    tool.run_data()
+    tool.run_onsets()
+    tool.run_vda()
+    # each event plot shows the reference times inside its data range
+    assert plotted == {1: [("SXR peak", datetime(2021, 10, 28, 15))], 2: [("type II", datetime(2021, 11, 9, 16))]}

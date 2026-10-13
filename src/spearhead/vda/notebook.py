@@ -43,6 +43,8 @@ class VDA_notebook:
         self.font_size = 22
         self.legend_font_size = 18
         self.save_plots = True
+        # (label, datetime) reference times shown in the VDA plots, e.g. SXR peak, type II and III radio bursts
+        self.reference_times = []
         self._apply_fonts()
 
         self._layout = widgets.Layout(width="auto")
@@ -536,8 +538,57 @@ class VDA_notebook:
         wgt_save.observe(set_save, names="value")
         return widgets.VBox([
             self._section("Plots", wgt_font, wgt_legend_font, wgt_save),
+            self._section("Reference times (shown at inverse beta 0 in the VDA plot of the event they are in)",
+                          self._reference_times_widget()),
             self._section("Tables", wgt_view_dfs),
         ])
+
+    def _reference_times_widget(self):
+        """One row with the label and datetime of each reference time, and a button to add one"""
+        references = self.reference_times
+        wrapper_rows = widgets.VBox()
+
+        def set_reference_value(i, j, value):
+            reference = list(references[i])
+            reference[j] = value
+            references[i] = tuple(reference)
+
+        def remove_reference(i):
+            del references[i]
+            show_rows()
+
+        def add_reference(_):
+            # at the start of the first event, to be changed
+            references.append((f"Reference {len(references) + 1}", self.parameters.date_ranges[0][0]))
+            show_rows()
+
+        def show_rows():
+            rows = []
+            for i, (label, time) in enumerate(references):
+                wgt_label = widgets.Text(value=label, description="Label:", style=self._style)
+                wgt_label.observe(lambda traitlet, i=i: set_reference_value(i, 0, traitlet["new"]), names="value")
+                wgt_time = widgets.widget_datetime.NaiveDatetimePicker(
+                    value=time,
+                    description="time:",
+                    style=self._style,
+                    layout=self._layout,
+                )
+                wgt_time.observe(lambda traitlet, i=i: set_reference_value(i, 1, traitlet["new"]), names="value")
+                btn_remove = widgets.Button(description="Remove", tooltip=f"Remove {label}")
+                btn_remove.on_click(lambda _, i=i: remove_reference(i))
+                rows.append(widgets.HBox([wgt_label, wgt_time, btn_remove]))
+            wrapper_rows.children = rows
+
+        btn_add = widgets.Button(description="Add Reference Time")
+        btn_add.on_click(add_reference)
+        show_rows()
+        return widgets.VBox([wrapper_rows, btn_add])
+
+    def _event_references(self, vda, event_no):
+        """The reference times inside the data range of the event"""
+        start, end = vda.df_times.loc[event_no, [vda.START_TIME_COLNAME, vda.END_TIME_COLNAME]]
+        return [(label, time) for label, time in self.reference_times
+                if time is not None and start <= pd.Timestamp(time) <= end]
 
     ############### Analysis steps ###############
     def run_data(self):
@@ -741,5 +792,5 @@ class VDA_notebook:
         for event_no in self.vda.vda_fits:
             self.vda.print_results(event_no)
             filename = views.vda_plot_filename(self.vda, event_no) if self.save_plots else None
-            _show_figure(views.plot_vda(self.vda, event_no, filename))
+            _show_figure(views.plot_vda(self.vda, event_no, filename, self._event_references(self.vda, event_no)))
         self._show(self.vda.results)
