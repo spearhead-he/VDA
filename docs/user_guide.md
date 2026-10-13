@@ -11,7 +11,7 @@
 
 ## Notebook
 
-The notebook `vda_tool.ipynb` has a setup cell, a form with all the parameters, and one cell per step of the analysis:
+The notebook `vda_multi_event.ipynb` has a setup cell, a form with all the parameters, and one cell per step of the analysis:
 
 ```python
 from spearhead.vda.notebook import VDA_notebook

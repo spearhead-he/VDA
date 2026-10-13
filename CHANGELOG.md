@@ -4,6 +4,9 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+- The notebook `vda_tool.ipynb` is renamed `vda_multi_event.ipynb` (the VDA of one or more events from one spacecraft).
+
 ## [0.8.0] - 2026-10-13
 
 ### Changed

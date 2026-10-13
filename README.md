@@ -30,7 +30,7 @@ The tool utilizes the Pandas module and generates multiple DataFrames during its
 
 ### Access online (JupyterHub)
 
-You can access the complete VDA tool online on the JupyterHub server of the SPEARHEAD project. All you need is a (free) [GitHub account](https://github.com/signup) for verification. [Access the tool by opening this link!](https://jupyterhub.spearhead-he.eu/hub/user-redirect/git-pull?repo=https%3A%2F%2Fgithub.com%2Fspearhead-he%2FVDA&urlpath=lab%2Ftree%2FVDA%2Fvda_tool.ipynb&branch=main)
+You can access the complete VDA tool online on the JupyterHub server of the SPEARHEAD project. All you need is a (free) [GitHub account](https://github.com/signup) for verification. [Access the tool by opening this link!](https://jupyterhub.spearhead-he.eu/hub/user-redirect/git-pull?repo=https%3A%2F%2Fgithub.com%2Fspearhead-he%2FVDA&urlpath=lab%2Ftree%2FVDA%2Fvda_multi_event.ipynb&branch=main)
 
 ### Install locally
 
@@ -39,11 +39,11 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 3. Open a terminal or the miniforge prompt and move to the directory where the code is.
 4. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
 5. Install the tool and its dependencies with `pip install -e ".[notebook]"` (or, equivalently, `pip install -r requirements.txt`)
-6. Open the Jupyter Notebook by running `jupyter-lab vda_tool.ipynb`
+6. Open the Jupyter Notebook by running `jupyter-lab vda_multi_event.ipynb`
 
 ## How to use
 
-Open the Notebook `vda_tool.ipynb` and run its cells in order: a setup cell, a form with all the parameters (tabs Events, Data, Energy channels, Onsets and Views/Plots), and one cell per step of the analysis:
+Open the Notebook `vda_multi_event.ipynb` and run its cells in order: a setup cell, a form with all the parameters (tabs Events, Data, Energy channels, Onsets and Views/Plots), and one cell per step of the analysis:
 
 ```python
 from spearhead.vda.notebook import VDA_notebook
