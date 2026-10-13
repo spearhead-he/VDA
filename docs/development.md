@@ -29,10 +29,16 @@ The tests are in `tests/`, one file per part of the tool:
 | `test_notebook.py` | Widgets of the notebook interface |
 | `test_end_to_end.py` | The default event, from the download of the data to the VDA plot, compared with its baseline image |
 
-All the tests except the end-to-end test run offline, with synthetic data (the helpers are in `tests/helpers.py`), and run first. To run all the tests, from the base directory of the repository:
+All the tests except the end-to-end test run offline, with synthetic data (the helpers are in `tests/helpers.py`). The tests that download data are marked `network` and run after the offline tests. To run all the tests, from the base directory of the repository:
 
 ```bash
 pytest tests/
+```
+
+Only the offline tests (e.g. without an internet connection):
+
+```bash
+pytest -m "not network" tests/
 ```
 
 With the comparison of the VDA plot with its baseline image (matplotlib 3.11 or newer; with older versions the comparison is skipped):
@@ -41,7 +47,7 @@ With the comparison of the VDA plot with its baseline image (matplotlib 3.11 or 
 pytest -rP --mpl --mpl-baseline-path=baseline --mpl-baseline-relative --mpl-generate-summary=html tests/
 ```
 
-The notebook runs headless with nbmake:
+The notebook runs headless with nbmake (it downloads data):
 
 ```bash
 pytest --nbmake vda_tool.ipynb

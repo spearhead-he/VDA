@@ -1,4 +1,4 @@
-"""End-to-end test of the default event: downloads the Solar Orbiter data and compares the VDA plot with
+"""End-to-end test of the default event (network test): downloads the Solar Orbiter data and compares the VDA plot with
 its baseline image. The commands to run it and to update the baseline image are in docs/development.md."""
 import matplotlib
 import pytest
@@ -20,6 +20,7 @@ _mpl_old = (int(matplotlib.__version__.split(".")[1])) < 11
 _image_compare = pytest.mark.mpl_image_compare(remove_text=True, deterministic=True) if not _mpl_old else lambda f: f
 
 
+@pytest.mark.network
 @_image_compare
 def test_vda_default():
     vda_parameters = VDA_parameters()

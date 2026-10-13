@@ -47,6 +47,11 @@ Documentation = "https://github.com/spearhead-he/VDA/tree/main/docs"
 Changelog = "https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md"
 DOI = "https://doi.org/10.5281/zenodo.14441053"
 
+[tool.pytest.ini_options]
+markers = [
+    "network: downloads data (deselect with -m \"not network\")",
+]
+
 [tool.setuptools.dynamic]
 version = {attr = "spearhead.vda.__version__"}
 
