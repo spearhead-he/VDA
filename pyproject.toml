@@ -18,7 +18,7 @@ dependencies = [
     "matplotlib>=3.6.3",
     "numpy>=1.24.1",
     "pandas>=1.5.3",
-    "pyonset @ git+https://github.com/Christian-Palmroos/PyOnset/",
+    "pyonset>=1.2.2",
     "seppy>=0.5.1",
     "solo-epd-loader>=0.3.7",
     "sunpy[all]>=6.0.4",
