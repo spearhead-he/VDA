@@ -4,11 +4,13 @@ The data are from one spacecraft (observer) at a time: Solar Orbiter, STEREO-A, 
 BepiColombo.
 
 Modules:
-- analysis: the VDA class, which performs the analysis
+- analysis: the VDA class, which performs the analysis, and CustomPointsVDA, the VDA fit of onset points given by
+  the user
 - conf: VDA_parameters, the parameters of the analysis, and OnsetSelection
 - observers: the spacecraft, their instruments and data loading
 - views: the plots, as matplotlib figures
-- notebook: VDA_notebook, the interface of the notebook with its widgets (needs the notebook dependencies)
+- notebook: the interfaces of the notebooks with their widgets, VDA_notebook (multiple events),
+  VDA_multi_spacecraft_notebook and VDA_custom_points_notebook (needs the notebook dependencies)
 """
 from .analysis import VDA
 from .conf import OnsetSelection, VDA_parameters

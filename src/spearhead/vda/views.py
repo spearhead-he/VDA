@@ -237,13 +237,14 @@ def vda_combined_plot_filename(vdas, event_no=1) -> str:
     return f"{time_start_str}_{time_end_str}_{observers_str}.png"
 
 
-def plot_vda_combined(vdas, event_no=1, filename=None, references=None) -> Figure:
+def plot_vda_combined(vdas, event_no=1, filename=None, references=None, title=None) -> Figure:
     """Plots together the VDA fits of the same event from several spacecraft, computed by vda.compute_vda() of each.
 
     vdas: {label: VDA}, e.g. {"STEREO-A": vda_sta, "SOHO": vda_soho}. The spacecraft without a fit of the event are
     left out. Each spacecraft has its color, with the proton points as circles and the electron points as stars, and
     its fit line and 2-sigma band extended to inverse beta 0.
     references: optional list of (label, datetime) reference times, shown at inverse beta 0
+    title: title of the plot, by default "VDA of" the date of the event
     """
     fits = {label: vda for label, vda in vdas.items() if event_no in getattr(vda, "vda_fits", {})}
     fig = plt.figure(figsize=(12, 9), layout="constrained")
@@ -296,7 +297,9 @@ def plot_vda_combined(vdas, event_no=1, filename=None, references=None) -> Figur
         ax.legend(handles[:n_spacecraft], labels[:n_spacecraft], loc="lower center", bbox_to_anchor=(0.5, 1.01),
                   frameon=False)
     ax.set_xlim(0, 1.03 * max_inv_beta)
-    if fits:
+    if title:
+        fig.suptitle(title)
+    elif fits:
         fig.suptitle(f"VDA of {next(iter(fits.values())).vda_fits[event_no]['t0']:%Y-%m-%d}")
     ax.set_xlabel("Inverse Beta")
     ax.set_ylabel("Time")
@@ -304,3 +307,9 @@ def plot_vda_combined(vdas, event_no=1, filename=None, references=None) -> Figur
     if filename:
         fig.savefig(filename)
     return fig
+
+
+def custom_points_plot_filename(vdas) -> str:
+    """Default filename of the VDA plot of custom points (CustomPointsVDA of each group): the earliest onset"""
+    onsets = [onset for vda in vdas.values() for onset in pd.to_datetime(vda.points["Onset Time"])]
+    return f"{min(onsets):%Y-%m-%d_%H%M}_custom_points.png" if onsets else "custom_points.png"
