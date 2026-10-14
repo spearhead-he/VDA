@@ -8,8 +8,11 @@
 - [Onset determination](#onset-determination)
 - [Onset selection](#onset-selection)
 - [Results](#results)
+- [Multiple spacecraft](#multiple-spacecraft)
 
 ## Notebook
+
+The tool has two notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft (described below), and `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft (see [Multiple spacecraft](#multiple-spacecraft)).
 
 The notebook `vda_multi_event.ipynb` has a setup cell, a form with all the parameters, and one cell per step of the analysis:
 
@@ -74,7 +77,7 @@ The parameters form has five tabs:
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.
 - **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$. A note shows when the energy ranges of a sensor changed on a date (SOHO EPHIN, see [Observers](#observers)).
 - **Onsets**: the onset determination method and its parameters (see [Onset determination](#onset-determination)), the default background window, and the onset selection method.
-- **Views/Plots**: font sizes, saving of the VDA plots as .png files, and display of the intermediate tables.
+- **Views/Plots**: font sizes, saving of the VDA plots as .png files, reference times for the VDA plots, and display of the intermediate tables.
 
 ## Events
 
@@ -117,4 +120,30 @@ The plots of the interactive onset selection show the background level and the t
 
 ## Results
 
-For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed, followed by the VDA plot (onsets of the proton channels as circles, of the electron channels as stars), which can also be saved as a .png file (Views/Plots tab). The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.
+For each event, the release time, the extra time (light travel time from the Sun to the spacecraft) and the apparent path length (APL) are printed with the name of the spacecraft, followed by the VDA plot, titled with the event, its date and the spacecraft (onsets of the proton channels as circles, of the electron channels as stars), which can also be saved as a .png file (Views/Plots tab). Reference times (e.g. SXR peak, type II and type III radio bursts), added in the Views/Plots tab with a label and a datetime ("Add Reference Time", also `tool.reference_times = [("SXR peak", datetime(2021, 10, 28, 15, 35))]`), are shown at inverse beta 0 in the VDA plot of the event whose data range contains them, with the fit line extended to inverse beta 0. The results of all the events are stored in the `tool.vda.results` table. For many events, `tool.vda.compute_vda()` followed by `tool.vda.print_results()` gives the results without creating the plots.
+
+## Multiple spacecraft
+
+The notebook `vda_multi_spacecraft.ipynb` performs the VDA of one event from the data of several spacecraft, and plots their VDA fits together. It has the same cells as the multi-event notebook:
+
+```python
+from spearhead.vda.notebook import VDA_multi_spacecraft_notebook
+tool = VDA_multi_spacecraft_notebook()   # setup
+
+tool.parameters_form()       # all the parameters
+tool.run_data()              # download of the data of each spacecraft, grouping of the energy channels
+tool.background_selection()  # background window of the event, for each spacecraft
+tool.run_onsets()            # onsets of each spacecraft, and their selection
+tool.run_vda()               # results and combined plot
+```
+
+The form has the tabs:
+
+- **Event**: the datetime range of the data of the event, the same for all the spacecraft.
+- **Spacecraft**: the spacecraft whose data are used (by default Solar Orbiter, STEREO-A and SOHO), and in a tab per spacecraft its viewings, resample frequency and grouped energy channels, starting from the defaults of the spacecraft (see [Observers](#observers)).
+- **Onsets**: the onset determination method and its parameters, the default background window and the onset selection method, the same for all the spacecraft (see [Onset determination](#onset-determination) and [Onset selection](#onset-selection)).
+- **Views/Plots**: as in the multi-event notebook, and whether the VDA plot of each spacecraft is also shown.
+
+Each spacecraft has its own analysis, as in the multi-event notebook: `tool.notebook("sta")` is the one of STEREO-A, with its analysis object `tool.notebook("sta").vda` and its parameters `tool.notebook("sta").parameters`. The spacecraft are selected with the checkboxes, or with `tool.select_spacecraft("wind")` (`tool.select_spacecraft("wind", False)` to remove one). A spacecraft without data for the event is left out of the next steps, with its error.
+
+The background windows and the interactive onset selection are shown for the spacecraft chosen in a dropdown. `run_vda()` prints the release time, extra time and APL of each spacecraft, and shows the combined plot: the onsets and the VDA fit of each spacecraft in its color (proton channels as circles, electron channels as stars), with the fit lines extended to inverse beta 0, the reference times, and the release time and APL of each spacecraft in the legend. It is saved as a .png file if selected in the Views/Plots tab (named after the data range and the spacecraft, e.g. `2021-10-28_1400_2021-10-28_2000_solo-sta-soho.png`), as are the VDA plots of each spacecraft, if shown (their names start with the spacecraft, e.g. `sta_...`). The results are in the `tool.results` table, one row per spacecraft.

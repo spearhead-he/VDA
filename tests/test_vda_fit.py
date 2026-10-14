@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 import astropy.constants as const
 import astropy.units as u
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
@@ -98,6 +99,31 @@ def test_vda_points_of_protons_and_electrons(fixed_spacecraft_distance):
     times = pd.date_range("2021-10-31 02:00", periods=2, freq="min")
     v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], times]))
     fig = views.plot_vda(v, 1)
+    # the title names the spacecraft
+    assert fig.get_suptitle() == "Event 1 (2021-10-31) | Solar Orbiter"
     points = {c.get_label(): len(c.get_offsets()) for c in fig.axes[0].collections}
     assert points["Protons"] == 2 and points["Electrons"] == 2
     plt.close(fig)
+
+
+def test_vda_plot_reference_times(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00"])
+    v.compute_vda()
+    times = pd.date_range("2021-10-31 02:00", periods=2, freq="min")
+    v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], times]))
+    references = [("SXR peak", datetime(2021, 10, 31, 2, 50)), ("type II", pd.Timestamp("2021-10-31 02:55"))]
+    ax = views.plot_vda(v, 1, references=references).axes[0]
+    # the reference times at inverse beta 0, with different markers, and the fit line extended to it
+    points = {c.get_label(): c for c in ax.collections if c.get_label() in ("SXR peak", "type II")}
+    assert list(points) == ["SXR peak", "type II"]
+    assert all(c.get_offsets()[0][0] == 0 for c in points.values())
+    assert mdates.num2date(points["type II"].get_offsets()[0][1]).replace(tzinfo=None) == datetime(2021, 10, 31, 2, 55)
+    assert points["SXR peak"].get_paths()[0] != points["type II"].get_paths()[0]
+    fit_line = [line for line in ax.get_lines() if line.get_label() == "Linear Regression"][0]
+    assert fit_line.get_xdata()[0] == 0
+    assert ax.get_xlim()[0] == 0
+    assert "SXR peak" in [t.get_text() for t in ax.get_legend().get_texts()]
+    # without reference times, the fit line starts at the first point
+    ax = views.plot_vda(v, 1).axes[0]
+    assert [line for line in ax.get_lines() if line.get_label() == "Linear Regression"][0].get_xdata()[0] == 1
+    plt.close("all")

@@ -47,6 +47,18 @@ def test_form_without_data_of_the_observer(monkeypatch):
     assert tool._channel_options("het", "protons")[:4] == [("0: 1-2 MeV", 0), ("1: 2-4 MeV", 1), ("2: 4-8 MeV", 2), ("3", 3)]
 
 
+def test_form_without_connection_to_the_data_server(monkeypatch):
+    def no_connection(*args, **kwargs):
+        raise ConnectionError("Connection aborted.")
+
+    monkeypatch.setattr(observers.StereoA, "load", no_connection)
+    tool = VDA_notebook(VDA(VDA_parameters(observer="sta")))
+    tool._data_tab()
+    tool._channels_tab()
+    assert "Connection aborted." in tool._observer_error.value
+    assert "the data server may be unavailable, read the channels again later" in tool._observer_error.value
+
+
 def test_form_reads_the_channels_again(monkeypatch):
     # after an error, the button reads the channels again, e.g. after the events are changed
     calls = []
@@ -287,6 +299,21 @@ def test_plots_tab(displayed):
     assert tool.parameters.view_dfs is True
 
 
+def test_reference_times(displayed):
+    tool = VDA_notebook()
+    tab = tool._plots_tab()
+    btn_add = find(tab, description="Add Reference Time")[0]
+    btn_add.click()
+    btn_add.click()
+    # new reference times at the start of the first event
+    assert tool.reference_times == [("Reference 1", datetime(2021, 10, 28, 14)), ("Reference 2", datetime(2021, 10, 28, 14))]
+    find(tab, widgets.Text, "Label:")[0].value = "SXR peak"
+    find(tab, description="time:")[0].value = datetime(2021, 10, 28, 15, 30)
+    find(tab, description="Remove")[1].click()
+    assert tool.reference_times == [("SXR peak", datetime(2021, 10, 28, 15, 30))]
+    assert len(find(tab, widgets.Text, "Label:")) == 1
+
+
 # ---------------------------------------------------------------- analysis steps
 
 def two_events_tool(**parameters):
@@ -379,10 +406,32 @@ def test_run_vda(displayed, monkeypatch, tmp_path, capsys):
     tool.run_data()
     assert tool.run_onsets() is None
     tool.run_vda()
-    assert "Event 1 (2021-10-28 14:00 to 2021-10-28 20:00)" in capsys.readouterr().out
+    assert "Event 1 (2021-10-28 14:00 to 2021-10-28 20:00) | Solar Orbiter" in capsys.readouterr().out
     # the tables of the steps, and one VDA plot per event, saved
     assert [type(o).__name__ for o in displayed] == ["DataFrame", "DataFrame", "DataFrame", "Image", "Image", "DataFrame"]
     assert sorted(f.name for f in tmp_path.glob("*.png")) == [
         "2021-10-28_1400_2021-10-28_2000_het-protons_het-electrons_5min.png",
         "2021-11-09_1500_2021-11-09_2100_het-protons_het-electrons_5min.png",
     ]
+
+
+def test_run_vda_reference_times_of_each_event(displayed, monkeypatch):
+    monkeypatch.setattr(VDA, "define_spacecraft_parameters", lambda self: None)
+    monkeypatch.setattr(observers.SolarOrbiter, "distance", lambda self, time: 0.8 * u.AU)
+    plotted = {}
+    plot_vda = notebook.views.plot_vda
+
+    def record_references(vda, event_no, filename=None, references=None):
+        plotted[event_no] = references
+        return plot_vda(vda, event_no, filename, references)
+
+    monkeypatch.setattr(notebook.views, "plot_vda", record_references)
+    tool = two_events_tool()
+    tool.save_plots = False
+    tool.reference_times = [("SXR peak", datetime(2021, 10, 28, 15)), ("type II", datetime(2021, 11, 9, 16)),
+                            ("Outside", datetime(2021, 11, 10))]
+    tool.run_data()
+    tool.run_onsets()
+    tool.run_vda()
+    # each event plot shows the reference times inside its data range
+    assert plotted == {1: [("SXR peak", datetime(2021, 10, 28, 15))], 2: [("type II", datetime(2021, 11, 9, 16))]}

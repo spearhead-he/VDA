@@ -4,7 +4,13 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+- Messages for the data servers that cannot be reached (e.g. a connection aborted while downloading): the parameters form and the data step say that the server may be unavailable, and to try again later.
+- Notebook `vda_multi_spacecraft.ipynb`: the VDA of one event from several spacecraft, with the VDA fits of the spacecraft in one plot. As in the multi-event notebook, it has a parameters form (tabs Event, Spacecraft, Onsets and Views/Plots) and one cell per step; each spacecraft has its viewings, resample frequency and grouped channels, and the event, onset determination and selection, and plots are the same for all of them. A spacecraft without data for the event is left out. The VDA plot of each spacecraft can also be shown. Its interface is `spearhead.vda.notebook.VDA_multi_spacecraft_notebook`, and the combined plot is `views.plot_vda_combined`. See the [user guide](docs/user_guide.md#multiple-spacecraft).
+- Reference times in the VDA plot: optional (label, datetime) times, e.g. of the SXR peak or of type II and type III radio bursts, shown at inverse beta 0 with the fit line extended to it. In the notebook they are added in the Views/Plots tab ("Add Reference Time", or `tool.reference_times`), each shown in the plot of the event whose data range contains it; in scripts, `views.plot_vda(vda, event_no, references=[...])`.
+
 ### Changed
+- The spacecraft of the data is named in the printed results and in the title of the VDA plot, e.g. `Event 1 (2021-10-28) | Solar Orbiter`.
 - The notebook `vda_tool.ipynb` is renamed `vda_multi_event.ipynb` (the VDA of one or more events from one spacecraft).
 
 ## [0.8.0] - 2026-10-13
