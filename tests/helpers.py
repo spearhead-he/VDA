@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 from spearhead.vda import VDA, VDA_parameters
+from spearhead.vda.observers import ParticleData
 
 
 def make_vda(**parameters) -> VDA:
@@ -70,3 +71,21 @@ def strip_figure_text(fig):
         if leg:
             leg.remove()
     return fig
+
+
+def rising_observer_load(self, sensor, startdate, enddate, viewing, path, particles=None):
+    """load() of an observer with every channel of the sensor, from the start to the end date at 1 minute, with a rise
+    two hours after the start in every viewing. The proton channel c is from 1 + c MeV, the electron channel c from
+    0.1 * (1 + c) MeV"""
+    index = pd.date_range(startdate, enddate, freq="1min")
+    noise = np.where(np.arange(len(index)) % 2 == 0, 1.0, 1.2)
+    rise = np.where(index >= index[0] + pd.Timedelta(hours=2), 100.0, 0.0)
+    scale = {"protons": 1.0, "electrons": 0.1}
+    data = {}
+    for particle in particles or self.SENSORS_PARTICLES[sensor]:
+        channels = list(self.CHANNELS[sensor][particle])
+        flux = pd.DataFrame({c: noise + rise for c in channels}, index=index)
+        energies = pd.DataFrame({"Low Energy": [scale[particle] * (1 + c) for c in channels],
+                                 "Bin Width": [scale[particle]] * len(channels)}, index=channels)
+        data[particle] = ParticleData(flux, energies)
+    return data

@@ -1,9 +1,12 @@
-"""Notebook interface of the VDA tool: the parameters form, its widgets and the steps of the analysis.
+"""Notebook interfaces of the VDA tool: the parameters form, its widgets and the steps of the analysis.
 
+VDA_notebook is the interface of the VDA of one or more events from one spacecraft (vda_multi_event.ipynb), and
+VDA_multi_spacecraft_notebook the one of the VDA of one event from several spacecraft (vda_multi_spacecraft.ipynb).
 The analysis itself is in analysis.py, its parameters in conf.py and the plots in views.py.
 """
 import html
 import os
+from copy import deepcopy
 from io import BytesIO
 from warnings import filterwarnings, simplefilter
 
@@ -26,6 +29,24 @@ def _show_figure(fig) -> None:
     fig.savefig(buffer, format="png", bbox_inches="tight")
     plt.close(fig)
     display(Image(buffer.getvalue()))
+
+
+def _is_connection_error(error) -> bool:
+    """Whether the error is a failed connection to a data server (e.g. aborted, refused, SSL error or timeout)"""
+    return any(cls.__name__ in ("ConnectionError", "SSLError", "Timeout", "TimeoutError") for cls in type(error).__mro__)
+
+
+def _compute_vda(vda) -> None:
+    """VDA fit of the events of the analysis"""
+    vda.construct_energy_channels_characteristics()
+    # loading the SPICE kernels logs every frame it installs, and JPL Horizons every location it gives
+    sunpy_level = sunpy_log.level
+    sunpy_log.setLevel("WARNING")
+    try:
+        vda.define_spacecraft_parameters()
+        vda.compute_vda()
+    finally:
+        sunpy_log.setLevel(sunpy_level)
 
 
 class VDA_notebook:
@@ -307,9 +328,13 @@ class VDA_notebook:
             self.vda.construct_energies_df(start, end)
         except Exception as e:
             self.vda.df_energies = None
+            if _is_connection_error(e):
+                advice = "the data server may be unavailable, read the channels again later."
+            else:
+                advice = "choose another spacecraft, or change the events and read the channels again."
             error = self._error_text(
                 f"{e}. The energy ranges of the {self.vda.observer.label} channels could not be read from the data "
-                f"of the first event: choose another spacecraft, or change the events and read the channels again."
+                f"of the first event: {advice}"
             )
         self._observer_error.value = error
         notes = [
@@ -673,13 +698,16 @@ class VDA_notebook:
         show_event()
         return widgets.VBox([widgets.HBox([wgt_event, btn_reset]), wgt_bg, wgt_status, out_plot])
 
-    def run_onsets(self):
-        """Determines the onsets and selects the ones used for the VDA (interactively, if selected)"""
+    def _determine_onsets(self):
         self.vda.calculate_onsets()
         self.vda.clean_onsets()
         self.vda.construct_options_df()
         self._show(self.vda.df_onsets_existing)
         self.vda.select_onsets()
+
+    def run_onsets(self):
+        """Determines the onsets and selects the ones used for the VDA (interactively, if selected)"""
+        self._determine_onsets()
         if self.parameters.onset_selection == OnsetSelection.INTERACTIVE:
             return self.onset_selection()
 
@@ -693,6 +721,8 @@ class VDA_notebook:
         selected_onsets = vda.parameters.selected_onsets
         # (event, sensor, particle, prefix, channel) of the channels with onsets
         keys = list(selected_onsets.index)
+        if not keys:
+            return widgets.HTML("No onsets were determined")
         out_plot = widgets.Output()
         wgt_status = widgets.HTML()
 
@@ -780,17 +810,236 @@ class VDA_notebook:
 
     def run_vda(self):
         """Fits the VDA line of each event, prints the results and plots them"""
-        self.vda.construct_energy_channels_characteristics()
-        # loading the SPICE kernels logs every frame it installs
-        sunpy_level = sunpy_log.level
-        sunpy_log.setLevel("WARNING")
-        try:
-            self.vda.define_spacecraft_parameters()
-        finally:
-            sunpy_log.setLevel(sunpy_level)
-        self.vda.compute_vda()
+        _compute_vda(self.vda)
         for event_no in self.vda.vda_fits:
             self.vda.print_results(event_no)
             filename = views.vda_plot_filename(self.vda, event_no) if self.save_plots else None
             _show_figure(views.plot_vda(self.vda, event_no, filename, self._event_references(self.vda, event_no)))
         self._show(self.vda.results)
+
+
+# Spacecraft of the multi-spacecraft notebook by default, with data and results for the default event
+DEFAULT_SPACECRAFT = ("solo", "sta", "soho")
+
+# Parameters of VDA_multi_spacecraft_notebook shared by all the spacecraft, in the order they are copied
+SHARED_PARAMETERS = ("date_ranges", "bg_after_start", "onset_method", "onset_method_parameters", "onset_selection",
+                     "view_dfs")
+
+
+class VDA_multi_spacecraft_notebook(VDA_notebook):
+
+    def __init__(self, spacecraft=DEFAULT_SPACECRAFT):
+        """Notebook interface of the VDA of one event from several spacecraft.
+
+        Each spacecraft has its own analysis (a VDA_notebook with its VDA), with its viewings, resample frequency and
+        grouped channels. The event, the onset determination and selection, and the plots are shared by all the
+        spacecraft: they are the parameters of self.vda, copied to the analysis of each spacecraft when the steps run.
+        """
+        super().__init__()
+        self.show_spacecraft_plots = False
+        # the analysis of each spacecraft, kept when it is unselected
+        self._notebooks = {}
+        self._settings = {}
+        self.spacecraft = []
+        for name in spacecraft:
+            self.select_spacecraft(name)
+        # the analyses of the spacecraft with data, after run_data()
+        self.analyses = {}
+        self.results = None
+
+    def notebook(self, name) -> VDA_notebook:
+        """The analysis of the spacecraft (e.g. tool.notebook("sta").parameters for its parameters)"""
+        if name not in self._notebooks:
+            self._notebooks[name] = VDA_notebook(VDA(VDA_parameters(observer=name)))
+            # the fonts of the plots are the ones of this notebook
+            self._apply_fonts()
+        return self._notebooks[name]
+
+    def select_spacecraft(self, name, selected=True):
+        """Adds or removes a spacecraft. The spacecraft keep the order of OBSERVERS"""
+        if name not in OBSERVERS:
+            raise ValueError(f"Unknown observer {name!r}. Use one of: {', '.join(OBSERVERS)}")
+        self.notebook(name)
+        self.spacecraft = [n for n in OBSERVERS if (n == name and selected) or (n != name and n in self.spacecraft)]
+
+    def _sync(self, notebook):
+        """Copies the shared parameters to the analysis of a spacecraft"""
+        for parameter in SHARED_PARAMETERS:
+            setattr(notebook.parameters, parameter, deepcopy(getattr(self.parameters, parameter)))
+
+    @staticmethod
+    def _label(name):
+        return OBSERVERS[name].label
+
+    ############### Parameters form ###############
+    def parameters_form(self):
+        """All the parameters of the analysis, in tabs"""
+        tabs = widgets.Tab(children=[
+            self._event_tab(),
+            self._spacecraft_tab(),
+            self._onsets_tab(),
+            self._plots_tab(),
+        ])
+        for i, title in enumerate(["Event", "Spacecraft", "Onsets", "Views/Plots"]):
+            tabs.set_title(i, title)
+        return tabs
+
+    def _event_tab(self):
+        start, end = self.parameters.date_ranges[0]
+        wgt_start = widgets.widget_datetime.NaiveDatetimePicker(value=start, description="Start:",
+                                                                style=self._style, layout=self._layout)
+        wgt_end = widgets.widget_datetime.NaiveDatetimePicker(value=end, description="end:",
+                                                              style=self._style, layout=self._layout)
+
+        def set_range(_):
+            self.parameters.date_ranges = [(wgt_start.value, wgt_end.value)]
+
+        wgt_start.observe(set_range, names="value")
+        wgt_end.observe(set_range, names="value")
+        return self._section("Datetime range of the event (the same for all the spacecraft)",
+                             widgets.HBox([wgt_start, wgt_end]))
+
+    def _spacecraft_tab(self):
+        tabs = widgets.Tab()
+
+        def show_settings():
+            tabs.children = [self._spacecraft_settings(name) for name in self.spacecraft]
+            for i, name in enumerate(self.spacecraft):
+                tabs.set_title(i, self._label(name))
+
+        def select(name, selected):
+            self.select_spacecraft(name, selected)
+            show_settings()
+
+        checkboxes = []
+        for name in OBSERVERS:
+            w = widgets.Checkbox(value=name in self.spacecraft, description=self._label(name), indent=False,
+                                 layout=widgets.Layout(width="auto"))
+            w.observe(lambda traitlet, name=name: select(name, traitlet["new"]), names="value")
+            checkboxes.append(w)
+        show_settings()
+        return widgets.VBox([
+            self._section("Spacecraft", widgets.HBox(checkboxes)),
+            self._section("Data and energy channels of each spacecraft", tabs),
+        ])
+
+    def _spacecraft_settings(self, name):
+        """Viewings, resample frequency and grouped channels of the spacecraft (created when it is first shown)"""
+        if name not in self._settings:
+            notebook = self.notebook(name)
+            # the energy ranges of the channels are read from the data of the event
+            self._sync(notebook)
+            notebook._observer_error = widgets.HTML()
+            notebook._wrapper_viewings = widgets.VBox([notebook._viewings_widget()])
+            self._settings[name] = widgets.VBox([
+                notebook._observer_error,
+                self._section("Viewings", notebook._wrapper_viewings),
+                self._section("Resampling", notebook._text_widget(
+                    "resample_frequency", "Resample frequency:",
+                    "Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling")),
+                notebook._channels_tab(),
+            ])
+        return self._settings[name]
+
+    def _plots_tab(self):
+        tab = super()._plots_tab()
+        w = widgets.Checkbox(value=self.show_spacecraft_plots,
+                             description="Show the VDA plot of each spacecraft, besides the combined plot",
+                             indent=False)
+        w.observe(lambda traitlet: setattr(self, "show_spacecraft_plots", traitlet["new"]), names="value")
+        section_plots = tab.children[0]
+        section_plots.children += (w,)
+        return tab
+
+    ############### Analysis steps ###############
+    def _check_analyses(self):
+        if not self.analyses:
+            raise ValueError("No spacecraft with data: run the data step with at least one spacecraft with data")
+
+    def run_data(self):
+        """Creates the event, downloads the data of each spacecraft and groups their energy channels.
+
+        A spacecraft without data is left out of the next steps, and its error is printed.
+        """
+        if not self.spacecraft:
+            raise ValueError("No spacecraft: select at least one in the Spacecraft tab")
+        self.analyses = {}
+        for name in self.spacecraft:
+            notebook = self.notebook(name)
+            self._sync(notebook)
+            # the energy ranges of the channels are read again, from the data of the event
+            notebook.vda.df_energies = None
+            print(f"{self._label(name)}:")
+            try:
+                notebook.run_data()
+            except Exception as e:
+                if _is_connection_error(e):
+                    print("    Left out, the data could not be downloaded (the data server may be unavailable, "
+                          f"run the data step again later): {e}")
+                else:
+                    print(f"    Left out, no data: {e}")
+                continue
+            self.analyses[name] = notebook
+        self._check_analyses()
+
+    def _per_spacecraft(self, widget_of):
+        """The widget of the spacecraft selected in a dropdown, created when it is first shown"""
+        self._check_analyses()
+        wgt_spacecraft = widgets.Dropdown(options=[(self._label(name), name) for name in self.analyses],
+                                          description="Spacecraft:", style=self._style)
+        wrapper = widgets.VBox()
+        shown = {}
+
+        def show(_=None):
+            name = wgt_spacecraft.value
+            if name not in shown:
+                shown[name] = widget_of(self.analyses[name])
+            wrapper.children = [shown[name]]
+
+        wgt_spacecraft.observe(show, names="value")
+        show()
+        return widgets.VBox([wgt_spacecraft, wrapper])
+
+    def background_selection(self):
+        """Plot of the event with a slider to choose its background window, for the selected spacecraft"""
+        return self._per_spacecraft(lambda notebook: notebook.background_selection())
+
+    def run_onsets(self):
+        """Determines the onsets of each spacecraft and selects the ones used for the VDA (interactively, if selected)"""
+        self._check_analyses()
+        for name, notebook in self.analyses.items():
+            if self.parameters.view_dfs:
+                print(f"{self._label(name)}:")
+            notebook._determine_onsets()
+        if self.parameters.onset_selection == OnsetSelection.INTERACTIVE:
+            return self._per_spacecraft(lambda notebook: notebook.onset_selection())
+
+    def run_vda(self):
+        """Fits the VDA line of each spacecraft, prints the results and plots them together"""
+        self._check_analyses()
+        vdas = {}
+        for name, notebook in self.analyses.items():
+            _compute_vda(notebook.vda)
+            vdas[self._label(name)] = notebook.vda
+        self.results = pd.DataFrame(
+            [vda.results.loc[1] if 1 in vda.results.index else pd.Series(dtype=object) for vda in vdas.values()],
+            index=pd.Index(list(vdas), name="Spacecraft"),
+        )
+        for label, vda in vdas.items():
+            res = self.results.loc[label]
+            print(label)
+            if pd.isna(res.get("APL")):
+                print("    No results (not enough onset points)\n")
+                continue
+            print(f"    Release Time : {res['Release Time']} ± {vda.format_timedelta(res['Release Time Error'])}")
+            print(f"    Extra Time   : {vda.format_timedelta(res['Extra Time'])}")
+            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+        references = self._event_references(next(iter(vdas.values())), 1)
+        if self.show_spacecraft_plots:
+            for name, notebook in self.analyses.items():
+                if 1 in notebook.vda.vda_fits:
+                    filename = f"{name}_{views.vda_plot_filename(notebook.vda, 1)}" if self.save_plots else None
+                    _show_figure(views.plot_vda(notebook.vda, 1, filename, references))
+        filename = views.vda_combined_plot_filename(vdas) if self.save_plots else None
+        _show_figure(views.plot_vda_combined(vdas, 1, filename, references))
+        self._show(self.results)

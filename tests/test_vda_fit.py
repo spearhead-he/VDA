@@ -99,6 +99,8 @@ def test_vda_points_of_protons_and_electrons(fixed_spacecraft_distance):
     times = pd.date_range("2021-10-31 02:00", periods=2, freq="min")
     v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], times]))
     fig = views.plot_vda(v, 1)
+    # the title names the spacecraft
+    assert fig.get_suptitle() == "Event 1 (2021-10-31) | Solar Orbiter"
     points = {c.get_label(): len(c.get_offsets()) for c in fig.axes[0].collections}
     assert points["Protons"] == 2 and points["Electrons"] == 2
     plt.close(fig)

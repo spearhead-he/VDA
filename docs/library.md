@@ -8,7 +8,7 @@ The analysis code can be used in scripts or other notebooks:
 | `spearhead.vda.conf` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
 | `spearhead.vda.observers` | The observers (spacecraft): their sensors, channels and viewings, data loading and distance from the Sun |
 | `spearhead.vda.views` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
-| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_multi_event.ipynb` (parameters form, analysis steps and their widgets) |
+| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_multi_event.ipynb` (parameters form, analysis steps and their widgets), and `VDA_multi_spacecraft_notebook`: the interface of `vda_multi_spacecraft.ipynb` |
 
 `VDA`, `VDA_parameters` and `OnsetSelection` can also be imported directly from `spearhead.vda`.
 
@@ -80,8 +80,9 @@ The functions of `spearhead.vda.views` return a matplotlib figure without showin
 | `plot_bg(vda, event_no)` | Grouped channels of the event with its background window |
 | `plot_onsets(vda, event_no, sensor, particle, prefix, channel, selected_viewing=None)` | Detected onsets of a grouped channel, one subplot per viewing |
 | `plot_vda(vda, event_no, references=None)` | VDA fit of the event (after `vda.compute_vda()`), with the proton points as circles and the electron points as stars. `references` is an optional list of (label, datetime) reference times (e.g. `[("SXR peak", datetime(2021, 10, 28, 15, 35))]`), shown at inverse beta 0 with the fit line extended to it |
+| `plot_vda_combined(vdas, event_no=1, references=None)` | VDA fits of the same event from several spacecraft (after `vda.compute_vda()` of each), with `vdas` as `{label: vda}` (e.g. `{"STEREO-A": vda_sta, "SOHO": vda_soho}`): the points and fit of each spacecraft in its color, the fit lines extended to inverse beta 0, and the optional reference times |
 
-`vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
+`vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot, and `vda_combined_plot_filename(vdas, event_no=1)` that of the combined plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
 
 ## Widgets in another notebook
 

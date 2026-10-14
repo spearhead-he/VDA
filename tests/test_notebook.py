@@ -47,6 +47,18 @@ def test_form_without_data_of_the_observer(monkeypatch):
     assert tool._channel_options("het", "protons")[:4] == [("0: 1-2 MeV", 0), ("1: 2-4 MeV", 1), ("2: 4-8 MeV", 2), ("3", 3)]
 
 
+def test_form_without_connection_to_the_data_server(monkeypatch):
+    def no_connection(*args, **kwargs):
+        raise ConnectionError("Connection aborted.")
+
+    monkeypatch.setattr(observers.StereoA, "load", no_connection)
+    tool = VDA_notebook(VDA(VDA_parameters(observer="sta")))
+    tool._data_tab()
+    tool._channels_tab()
+    assert "Connection aborted." in tool._observer_error.value
+    assert "the data server may be unavailable, read the channels again later" in tool._observer_error.value
+
+
 def test_form_reads_the_channels_again(monkeypatch):
     # after an error, the button reads the channels again, e.g. after the events are changed
     calls = []
@@ -394,7 +406,7 @@ def test_run_vda(displayed, monkeypatch, tmp_path, capsys):
     tool.run_data()
     assert tool.run_onsets() is None
     tool.run_vda()
-    assert "Event 1 (2021-10-28 14:00 to 2021-10-28 20:00)" in capsys.readouterr().out
+    assert "Event 1 (2021-10-28 14:00 to 2021-10-28 20:00) | Solar Orbiter" in capsys.readouterr().out
     # the tables of the steps, and one VDA plot per event, saved
     assert [type(o).__name__ for o in displayed] == ["DataFrame", "DataFrame", "DataFrame", "Image", "Image", "DataFrame"]
     assert sorted(f.name for f in tmp_path.glob("*.png")) == [

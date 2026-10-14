@@ -143,9 +143,16 @@ def vda_plot_filename(vda, event_no) -> str:
     return f"{time_start_str}_{time_end_str}_{particles_str}_{freq_str}.png"
 
 
-# marker and color of each reference time, in order
-REFERENCE_STYLES = [("^", "tab:blue"), ("v", "tab:orange"), ("X", "tab:green"), ("D", "tab:red"), ("s", "tab:purple"),
-                    ("P", "tab:brown")]
+def _particle_markers() -> list:
+    """(particle, marker, size) of the VDA points: protons as circles, electrons as stars, enlarged to look as big as
+    the circles"""
+    marker_size = plt.rcParams["lines.markersize"] ** 2
+    return [("protons", "o", marker_size), ("electrons", "*", 2.25 * marker_size)]
+
+
+# marker and color of each reference time, in order. The colors are not those of the spacecraft in the combined plot
+REFERENCE_STYLES = [("^", "tab:pink"), ("v", "tab:olive"), ("X", "black"), ("D", "tab:cyan"), ("s", "tab:gray"),
+                    ("P", "navy")]
 
 
 def _plot_references(ax, references) -> None:
@@ -175,9 +182,7 @@ def plot_vda(vda, event_no, filename=None, references=None) -> Figure:
     res = vda.results.loc[event_no]
     fig = plt.figure(figsize=(12, 8), layout="constrained")
     ax = fig.add_subplot()
-    # protons as circles, electrons as stars, enlarged to look as big as the circles
-    marker_size = plt.rcParams["lines.markersize"] ** 2
-    for particle, marker, size in (("protons", "o", marker_size), ("electrons", "*", 2.25 * marker_size)):
+    for particle, marker, size in _particle_markers():
         is_particle = fit["particles"] == particle
         if is_particle.any():
             ax.scatter(
@@ -203,7 +208,8 @@ def plot_vda(vda, event_no, filename=None, references=None) -> Figure:
     )
     if references:
         _plot_references(ax, references)
-    fig.suptitle(f"Event {event_no} ({vda.df_grouped.loc[event_no].index[1].to_pydatetime().strftime('%Y-%m-%d')})")
+    fig.suptitle(f"Event {event_no} ({vda.df_grouped.loc[event_no].index[1].to_pydatetime().strftime('%Y-%m-%d')})"
+                 f" | {vda.observer.label}")
     ax.set_xlabel("Inverse Beta")
     ax.set_ylabel("Time")
     ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
@@ -216,6 +222,85 @@ def plot_vda(vda, event_no, filename=None, references=None) -> Figure:
         ax.plot([], [], alpha=0, label=label)
     # legend between the title and the plot
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=2, frameon=False)
+    if filename:
+        fig.savefig(filename)
+    return fig
+
+
+def vda_combined_plot_filename(vdas, event_no=1) -> str:
+    """Default filename of the combined VDA plot of the event: data range and observers"""
+    vda = next(iter(vdas.values()))
+    event_times = vda.df_times.loc[event_no]
+    time_start_str = event_times[vda.START_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
+    time_end_str = event_times[vda.END_TIME_COLNAME].strftime("%Y-%m-%d_%H%M")
+    observers_str = "-".join(vda.parameters.observer for vda in vdas.values())
+    return f"{time_start_str}_{time_end_str}_{observers_str}.png"
+
+
+def plot_vda_combined(vdas, event_no=1, filename=None, references=None) -> Figure:
+    """Plots together the VDA fits of the same event from several spacecraft, computed by vda.compute_vda() of each.
+
+    vdas: {label: VDA}, e.g. {"STEREO-A": vda_sta, "SOHO": vda_soho}. The spacecraft without a fit of the event are
+    left out. Each spacecraft has its color, with the proton points as circles and the electron points as stars, and
+    its fit line and 2-sigma band extended to inverse beta 0.
+    references: optional list of (label, datetime) reference times, shown at inverse beta 0
+    """
+    fits = {label: vda for label, vda in vdas.items() if event_no in getattr(vda, "vda_fits", {})}
+    fig = plt.figure(figsize=(12, 9), layout="constrained")
+    ax = fig.add_subplot()
+    max_inv_beta = max((max(vda.vda_fits[event_no]["inv_betas"]) for vda in fits.values()), default=1)
+    fit_x = np.array([0, max_inv_beta])
+    colors = cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+    particles = set()
+    for (label, vda), color in zip(fits.items(), colors):
+        fit = vda.vda_fits[event_no]
+        a, b, b_error = fit["a"], fit["b"], fit["b_error"]
+
+        def to_time(seconds, t0=fit["t0"]):
+            return t0 + timedelta(seconds=seconds)
+
+        for particle, marker, size in _particle_markers():
+            is_particle = fit["particles"] == particle
+            if is_particle.any():
+                particles.add(particle)
+                ax.scatter(fit["inv_betas"][is_particle],
+                           [to_time(t) for t in fit["onset_seconds"][is_particle]],
+                           color=color, marker=marker, s=size, zorder=2)
+        res = vda.results.loc[event_no]
+        ax.plot(
+            fit_x,
+            [to_time(a * x + b) for x in fit_x],
+            color=color,
+            label=(f"{label}: release {pd.Timestamp(res['Release Time']):%H:%M:%S} "
+                   f"+/- {vda.format_timedelta(res['Release Time Error'])}, APL {res['APL']:.2f} +/- {res['APL Error']:.2f}"),
+        )
+        ax.fill_between(
+            fit_x,
+            [to_time(a * x + b - 2 * b_error) for x in fit_x],
+            [to_time(a * x + b + 2 * b_error) for x in fit_x],
+            color=color,
+            alpha=0.1,
+        )
+    # the particles, in black, and the reference times in a legend inside the plot
+    n_spacecraft = len(ax.get_lines())
+    for particle, marker, size in _particle_markers():
+        if particle in particles:
+            ax.scatter([], [], color="black", marker=marker, s=size, label=particle.capitalize())
+    if references:
+        _plot_references(ax, references)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles[n_spacecraft:]:
+        ax.add_artist(ax.legend(handles[n_spacecraft:], labels[n_spacecraft:], loc="upper left"))
+    # the spacecraft in the legend between the title and the plot
+    if handles[:n_spacecraft]:
+        ax.legend(handles[:n_spacecraft], labels[:n_spacecraft], loc="lower center", bbox_to_anchor=(0.5, 1.01),
+                  frameon=False)
+    ax.set_xlim(0, 1.03 * max_inv_beta)
+    if fits:
+        fig.suptitle(f"VDA of {next(iter(fits.values())).vda_fits[event_no]['t0']:%Y-%m-%d}")
+    ax.set_xlabel("Inverse Beta")
+    ax.set_ylabel("Time")
+    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     if filename:
         fig.savefig(filename)
     return fig

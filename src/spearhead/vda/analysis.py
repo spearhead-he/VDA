@@ -704,7 +704,7 @@ class VDA:
         for index_event in events:
             time_start = self.df_times.loc[index_event][self.START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
             time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
-            print(f"Event {index_event} ({time_start} to {time_end})")
+            print(f"Event {index_event} ({time_start} to {time_end}) | {self.observer.label}")
             res = self.results.loc[index_event]
             if pd.isna(res["APL"]):
                 print("    No results (not enough onset points)\n")

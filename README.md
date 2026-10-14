@@ -20,6 +20,8 @@
 
 The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of one or multiple Solar Energetic Particle (SEP) events. The events are provided to the tool as datetime ranges or reference times, from a file or entered in the Notebook. The user can parameterize the given Notebook and control the spacecraft whose data are used (Solar Orbiter, STEREO-A, Parker Solar Probe, SOHO, Wind or BepiColombo), which particle species are used, the sensor from which they are detected, the viewings to be considered, and the background window of each event.
 
+The tool has two notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft, and `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft, with their VDA fits in one plot.
+
 The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is the release time and apparent path length of each inputted event, with a plot of its VDA analysis.
 
 *Tool is still under active development and its results should be handled with caution.* 
@@ -39,7 +41,7 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 3. Open a terminal or the miniforge prompt and move to the directory where the code is.
 4. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
 5. Install the tool and its dependencies with `pip install -e ".[notebook]"` (or, equivalently, `pip install -r requirements.txt`)
-6. Open the Jupyter Notebook by running `jupyter-lab vda_multi_event.ipynb`
+6. Open the Jupyter Notebook by running `jupyter-lab vda_multi_event.ipynb` (or `jupyter-lab vda_multi_spacecraft.ipynb`)
 
 ## How to use
 
@@ -57,6 +59,8 @@ tool.run_vda()               # results and plots
 ```
 
 The events are given with a .csv file (datetime ranges or reference times, see the [examples](examples/)) or entered in the form. See the [user guide](docs/user_guide.md) for details.
+
+The Notebook `vda_multi_spacecraft.ipynb` has the same cells, with `VDA_multi_spacecraft_notebook` instead of `VDA_notebook`, for one event and several spacecraft (see the [user guide](docs/user_guide.md#multiple-spacecraft)).
 
 ## What's new in v0.8.0
 
