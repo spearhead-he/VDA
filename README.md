@@ -11,7 +11,8 @@
   - [About](#about)
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
-  - [What's new in v0.8.0](#whats-new-in-v080)
+  - [Example output](#example-output)
+  - [What's new in v1.0.0](#whats-new-in-v100)
   - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
@@ -23,8 +24,6 @@ The VDA tool helps in the automation of Velocity Dispersion Analysis (VDA) of on
 The tool has three notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft, `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft, with their VDA fits in one plot, and `vda_custom_points.ipynb`, the VDA fit of onset points given by the user, in groups such as one per spacecraft.
 
 The tool utilizes the Pandas module and generates multiple DataFrames during its execution. The final output of the tool is the release time and apparent path length of each inputted event, with a plot of its VDA analysis.
-
-*Tool is still under active development and its results should be handled with caution.* 
 
 *Tested in Ubuntu with Python 3.11 to 3.14, and MacOS 15.1.1 with Python 3.12.8*
 
@@ -71,9 +70,31 @@ The events are given with a .csv file (datetime ranges or reference times, see t
 
 The Notebook `vda_multi_spacecraft.ipynb` has the same cells, with `VDA_multi_spacecraft_notebook` instead of `VDA_notebook`, for one event and several spacecraft (see the [user guide](https://github.com/spearhead-he/VDA/blob/main/docs/user_guide.md#multiple-spacecraft)). The Notebook `vda_custom_points.ipynb` has a form with the onset points (or a points file, see the [example](https://github.com/spearhead-he/VDA/blob/main/examples/custom_points_example.csv)) and the VDA step (see the [user guide](https://github.com/spearhead-he/VDA/blob/main/docs/user_guide.md#custom-points)).
 
-## What's new in v0.8.0
+## Example output
 
-- [pyonset](https://pypi.org/project/pyonset/) is installed from PyPI: installing the tool no longer needs `git`.
+The VDA plots of the notebooks with their default parameters and example data.
+
+`vda_multi_event.ipynb`: the default event (2021-10-28) from Solar Orbiter, with the onsets of the proton channels as circles and of the electron channels as stars, and the release time and apparent path length (APL) of the VDA fit.
+
+<img src="https://raw.githubusercontent.com/spearhead-he/VDA/main/docs/images/vda_multi_event.png" alt="VDA plot of the 2021-10-28 event from Solar Orbiter" width="700">
+
+`vda_multi_spacecraft.ipynb`: the same event from Solar Orbiter, STEREO-A and SOHO, with the VDA fit of each spacecraft extended to inverse beta 0.
+
+<img src="https://raw.githubusercontent.com/spearhead-he/VDA/main/docs/images/vda_multi_spacecraft.png" alt="VDA fits of the 2021-10-28 event from Solar Orbiter, STEREO-A and SOHO" width="700">
+
+`vda_custom_points.ipynb`: the example points of the 2024-11-21 event (`examples/custom_points_example.csv`) seen by SOHO, STEREO-A and Solar Orbiter, with reference times at inverse beta 0.
+
+<img src="https://raw.githubusercontent.com/spearhead-he/VDA/main/docs/images/vda_custom_points.png" alt="VDA fits of the custom points of the 2024-11-21 event, with reference times" width="700">
+
+## What's new in v1.0.0
+
+- The tool is on [PyPI](https://pypi.org/project/spearhead-vda/): `pip install "spearhead-vda[notebook]"`, and the notebooks are downloaded with `spearhead-vda-notebooks` (see [Install locally](#install-locally)).
+- Three notebooks:
+  - `vda_multi_event.ipynb` (previously `vda_tool.ipynb`): the VDA of one or more events from one spacecraft
+  - `vda_multi_spacecraft.ipynb` (new): the VDA of one event from several spacecraft, with their VDA fits in one plot
+  - `vda_custom_points.ipynb` (new): the VDA fit of onset points given by the user, in groups (e.g. one per spacecraft), entered in its form or read from a points file
+- Reference times (e.g. SXR peak, type II and type III radio bursts) shown at inverse beta 0 in the VDA plots.
+- The spacecraft is named in the results and in the title of the VDA plot.
 
 See the [changelog](https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
