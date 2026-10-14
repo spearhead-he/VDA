@@ -9,10 +9,11 @@
 - [Onset selection](#onset-selection)
 - [Results](#results)
 - [Multiple spacecraft](#multiple-spacecraft)
+- [Custom points](#custom-points)
 
 ## Notebook
 
-The tool has two notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft (described below), and `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft (see [Multiple spacecraft](#multiple-spacecraft)).
+The tool has three notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft (described below), `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft (see [Multiple spacecraft](#multiple-spacecraft)), and `vda_custom_points.ipynb`, the VDA fit of onset points given by the user (see [Custom points](#custom-points)).
 
 The notebook `vda_multi_event.ipynb` has a setup cell, a form with all the parameters, and one cell per step of the analysis:
 
@@ -147,3 +148,35 @@ The form has the tabs:
 Each spacecraft has its own analysis, as in the multi-event notebook: `tool.notebook("sta")` is the one of STEREO-A, with its analysis object `tool.notebook("sta").vda` and its parameters `tool.notebook("sta").parameters`. The spacecraft are selected with the checkboxes, or with `tool.select_spacecraft("wind")` (`tool.select_spacecraft("wind", False)` to remove one). A spacecraft without data for the event is left out of the next steps, with its error.
 
 The background windows and the interactive onset selection are shown for the spacecraft chosen in a dropdown. `run_vda()` prints the release time, extra time and APL of each spacecraft, and shows the combined plot: the onsets and the VDA fit of each spacecraft in its color (proton channels as circles, electron channels as stars), with the fit lines extended to inverse beta 0, the reference times, and the release time and APL of each spacecraft in the legend. It is saved as a .png file if selected in the Views/Plots tab (named after the data range and the spacecraft, e.g. `2021-10-28_1400_2021-10-28_2000_solo-sta-soho.png`), as are the VDA plots of each spacecraft, if shown (their names start with the spacecraft, e.g. `sta_...`). The results are in the `tool.results` table, one row per spacecraft.
+
+## Custom points
+
+The notebook `vda_custom_points.ipynb` performs the VDA fit of onset points given by the user. It has a setup cell, a form and the VDA step:
+
+```python
+from spearhead.vda.notebook import VDA_custom_points_notebook
+tool = VDA_custom_points_notebook()                  # setup
+tool.load_points("examples/custom_points_example.csv")   # optional: points of a file, into the form
+
+tool.parameters_form()   # the points
+tool.run_vda()           # results and plot
+```
+
+A point is an onset time, the energy of its channel and its particle (protons or electrons). The energy is a single energy (e.g. `13.5`) or the range of the channel (e.g. `13-16`), in MeV, whose geometric mean is used, as in the other notebooks. The points are in groups, e.g. one per spacecraft, each with its label and the distance of its observer from the Sun (AU), which gives the light travel time from the Sun (extra time) and the APL. Each group has its own VDA fit.
+
+The form has the tabs:
+
+- **Points**: a .csv points file, or the groups of points if no file is given. In the form, each group is a tab with its label, distance and points ("Add Point" / "Remove"); groups are added with "Add Group" and removed with "Remove Group". `tool.load_points("path.csv")` loads the points of a file into the form, to see or change them.
+- **Views/Plots**: font sizes, saving of the VDA plot as a .png file (named after the earliest onset, e.g. `2024-11-21_1809_custom_points.png`), its title (by default "VDA of" the date of the onsets), and reference times shown at inverse beta 0.
+
+The points file has one row per point, with the columns:
+
+| Column | Meaning |
+|---|---|
+| `Group` | Group of the point (optional; without it all the points are one group, "Points") |
+| `Distance` | Distance of the observer of the group from the Sun (AU), the same for all the points of the group |
+| `Particle` | `protons` (or `p`) or `electrons` (or `e`) |
+| `Energy` | Single energy or range of the channel, in MeV (e.g. `13.5` or `13-16`) |
+| `Onset Time` | Onset time, in any format supported by `pandas.to_datetime` (e.g. 2024-11-21 18:20:14) |
+
+The example `examples/custom_points_example.csv` has the points of the 2024-11-21 event seen by SOHO, STEREO-A and Solar Orbiter, with the distances of the spacecraft from JPL Horizons. `run_vda()` prints the release time, extra time and APL of each group, and shows the VDA plot: the points and the VDA fit of each group in its color (protons as circles, electrons as stars), with the fit lines extended to inverse beta 0, the reference times, and the release time and APL of each group in the legend. The results are in the `tool.results` table, one row per group.

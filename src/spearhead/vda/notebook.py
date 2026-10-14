@@ -1,12 +1,14 @@
 """Notebook interfaces of the VDA tool: the parameters form, its widgets and the steps of the analysis.
 
-VDA_notebook is the interface of the VDA of one or more events from one spacecraft (vda_multi_event.ipynb), and
-VDA_multi_spacecraft_notebook the one of the VDA of one event from several spacecraft (vda_multi_spacecraft.ipynb).
+VDA_notebook is the interface of the VDA of one or more events from one spacecraft (vda_multi_event.ipynb),
+VDA_multi_spacecraft_notebook the one of the VDA of one event from several spacecraft (vda_multi_spacecraft.ipynb),
+and VDA_custom_points_notebook the one of the VDA of onset points given by the user (vda_custom_points.ipynb).
 The analysis itself is in analysis.py, its parameters in conf.py and the plots in views.py.
 """
 import html
 import os
 from copy import deepcopy
+from datetime import datetime
 from io import BytesIO
 from warnings import filterwarnings, simplefilter
 
@@ -18,7 +20,7 @@ from pandas.errors import PerformanceWarning
 from sunpy import log as sunpy_log
 
 from . import views
-from .analysis import VDA
+from .analysis import VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, read_points_file
 from .conf import ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
 from .observers import OBSERVERS
 
@@ -36,6 +38,17 @@ def _is_connection_error(error) -> bool:
     return any(cls.__name__ in ("ConnectionError", "SSLError", "Timeout", "TimeoutError") for cls in type(error).__mro__)
 
 
+def _print_results(label, res, format_timedelta) -> None:
+    """Prints the results of a VDA fit (a row of VDA.results) under the label"""
+    print(label)
+    if pd.isna(res.get("APL")):
+        print("    No results (not enough onset points)\n")
+        return
+    print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
+    print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
+    print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+
+
 def _compute_vda(vda) -> None:
     """VDA fit of the events of the analysis"""
     vda.construct_energy_channels_characteristics()
@@ -49,18 +62,13 @@ def _compute_vda(vda) -> None:
         sunpy_log.setLevel(sunpy_level)
 
 
-class VDA_notebook:
+class _NotebookBase:
+    """The parts shared by the notebook interfaces: the fonts, saving and reference times of the plots"""
 
-    def __init__(self, vda=None):
-        """Notebook interface of a VDA analysis.
-
-        By default a new analysis with the default parameters is created. An existing VDA object can be given
-        instead, e.g. to use the background or the interactive onset selection in another notebook.
-        """
+    def __init__(self):
         simplefilter(action="ignore", category=PerformanceWarning)
         filterwarnings(action="ignore", message="Discarding nonzero nanoseconds in conversion")
 
-        self.vda = VDA(VDA_parameters()) if vda is None else vda
         self.font_size = 22
         self.legend_font_size = 18
         self.save_plots = True
@@ -71,13 +79,117 @@ class VDA_notebook:
         self._layout = widgets.Layout(width="auto")
         self._style = {"description_width": "initial"}
 
-    @property
-    def parameters(self):
-        return self.vda.parameters
-
     def _apply_fonts(self):
         plt.rc("font", size=self.font_size)
         plt.rc("legend", fontsize=self.legend_font_size)
+
+    @staticmethod
+    def _section(title, *children):
+        return widgets.VBox([widgets.HTML(f"<b>{title}</b>"), *children])
+
+    @staticmethod
+    def _note(text):
+        return widgets.HTML(f"<i>{html.escape(text)}</i>")
+
+    @staticmethod
+    def _error_text(text):
+        return f'<span style="color: red"><b>Error:</b> {html.escape(text)}</span>'
+
+    ############### Views/Plots tab ###############
+    # where the reference times are shown, in the title of their section
+    _REFERENCE_TIMES_PLOTS = "in the VDA plots"
+    _SAVE_PLOTS_DESCRIPTION = "Save the VDA plots as .png files"
+
+    def _plots_tab(self):
+        return widgets.VBox(self._plots_sections())
+
+    def _plots_sections(self):
+        """Font sizes, saving of the plots and reference times"""
+        wgt_font = widgets.BoundedIntText(value=self.font_size, min=6, max=40, description="Font size:",
+                                          style=self._style)
+        wgt_legend_font = widgets.BoundedIntText(value=self.legend_font_size, min=6, max=40, description="Legend font size:",
+                                                 style=self._style)
+        wgt_save = widgets.Checkbox(value=self.save_plots, description=self._SAVE_PLOTS_DESCRIPTION, indent=False)
+
+        def set_font(traitlet):
+            self.font_size = traitlet["new"]
+            self._apply_fonts()
+
+        def set_legend_font(traitlet):
+            self.legend_font_size = traitlet["new"]
+            self._apply_fonts()
+
+        def set_save(traitlet):
+            self.save_plots = traitlet["new"]
+
+        wgt_font.observe(set_font, names="value")
+        wgt_legend_font.observe(set_legend_font, names="value")
+        wgt_save.observe(set_save, names="value")
+        return [
+            self._section("Plots", wgt_font, wgt_legend_font, wgt_save),
+            self._section(f"Reference times (shown at inverse beta 0 {self._REFERENCE_TIMES_PLOTS})",
+                          self._reference_times_widget()),
+        ]
+
+    def _reference_times_widget(self):
+        """One row with the label and datetime of each reference time, and a button to add one"""
+        references = self.reference_times
+        wrapper_rows = widgets.VBox()
+
+        def set_reference_value(i, j, value):
+            reference = list(references[i])
+            reference[j] = value
+            references[i] = tuple(reference)
+
+        def remove_reference(i):
+            del references[i]
+            show_rows()
+
+        def add_reference(_):
+            references.append((f"Reference {len(references) + 1}", self._default_reference_time()))
+            show_rows()
+
+        def show_rows():
+            rows = []
+            for i, (label, time) in enumerate(references):
+                wgt_label = widgets.Text(value=label, description="Label:", style=self._style)
+                wgt_label.observe(lambda traitlet, i=i: set_reference_value(i, 0, traitlet["new"]), names="value")
+                wgt_time = widgets.widget_datetime.NaiveDatetimePicker(
+                    value=time,
+                    description="time:",
+                    style=self._style,
+                    layout=self._layout,
+                )
+                wgt_time.observe(lambda traitlet, i=i: set_reference_value(i, 1, traitlet["new"]), names="value")
+                btn_remove = widgets.Button(description="Remove", tooltip=f"Remove {label}")
+                btn_remove.on_click(lambda _, i=i: remove_reference(i))
+                rows.append(widgets.HBox([wgt_label, wgt_time, btn_remove]))
+            wrapper_rows.children = rows
+
+        btn_add = widgets.Button(description="Add Reference Time")
+        btn_add.on_click(add_reference)
+        show_rows()
+        return widgets.VBox([wrapper_rows, btn_add])
+
+    def _default_reference_time(self):
+        """Datetime of a new reference time, to be changed"""
+        return datetime.now().replace(second=0, microsecond=0)
+
+
+class VDA_notebook(_NotebookBase):
+
+    def __init__(self, vda=None):
+        """Notebook interface of a VDA analysis.
+
+        By default a new analysis with the default parameters is created. An existing VDA object can be given
+        instead, e.g. to use the background or the interactive onset selection in another notebook.
+        """
+        self.vda = VDA(VDA_parameters()) if vda is None else vda
+        super().__init__()
+
+    @property
+    def parameters(self):
+        return self.vda.parameters
 
     def _show(self, df):
         if self.parameters.view_dfs:
@@ -96,18 +208,6 @@ class VDA_notebook:
         for i, title in enumerate(["Events", "Data", "Energy channels", "Onsets", "Views/Plots"]):
             tabs.set_title(i, title)
         return tabs
-
-    @staticmethod
-    def _section(title, *children):
-        return widgets.VBox([widgets.HTML(f"<b>{title}</b>"), *children])
-
-    @staticmethod
-    def _note(text):
-        return widgets.HTML(f"<i>{html.escape(text)}</i>")
-
-    @staticmethod
-    def _error_text(text):
-        return f'<span style="color: red"><b>Error:</b> {html.escape(text)}</span>'
 
     def _bind(self, widget, parameter):
         """Sets the parameter to the value of the widget when it changes"""
@@ -535,79 +635,19 @@ class VDA_notebook:
         return w
 
     ############### Views/Plots tab ###############
+    _REFERENCE_TIMES_PLOTS = "in the VDA plot of the event they are in"
+
     def _plots_tab(self):
-        wgt_font = widgets.BoundedIntText(value=self.font_size, min=6, max=40, description="Font size:",
-                                          style=self._style)
-        wgt_legend_font = widgets.BoundedIntText(value=self.legend_font_size, min=6, max=40, description="Legend font size:",
-                                                 style=self._style)
-        wgt_save = widgets.Checkbox(value=self.save_plots, description="Save the VDA plots as .png files", indent=False)
         wgt_view_dfs = widgets.Checkbox(value=self.parameters.view_dfs,
                                         description="Display the produced DataFrames",
                                         indent=True,
                                         style=self._style)
         self._bind(wgt_view_dfs, "view_dfs")
+        return widgets.VBox([*self._plots_sections(), self._section("Tables", wgt_view_dfs)])
 
-        def set_font(traitlet):
-            self.font_size = traitlet["new"]
-            self._apply_fonts()
-
-        def set_legend_font(traitlet):
-            self.legend_font_size = traitlet["new"]
-            self._apply_fonts()
-
-        def set_save(traitlet):
-            self.save_plots = traitlet["new"]
-
-        wgt_font.observe(set_font, names="value")
-        wgt_legend_font.observe(set_legend_font, names="value")
-        wgt_save.observe(set_save, names="value")
-        return widgets.VBox([
-            self._section("Plots", wgt_font, wgt_legend_font, wgt_save),
-            self._section("Reference times (shown at inverse beta 0 in the VDA plot of the event they are in)",
-                          self._reference_times_widget()),
-            self._section("Tables", wgt_view_dfs),
-        ])
-
-    def _reference_times_widget(self):
-        """One row with the label and datetime of each reference time, and a button to add one"""
-        references = self.reference_times
-        wrapper_rows = widgets.VBox()
-
-        def set_reference_value(i, j, value):
-            reference = list(references[i])
-            reference[j] = value
-            references[i] = tuple(reference)
-
-        def remove_reference(i):
-            del references[i]
-            show_rows()
-
-        def add_reference(_):
-            # at the start of the first event, to be changed
-            references.append((f"Reference {len(references) + 1}", self.parameters.date_ranges[0][0]))
-            show_rows()
-
-        def show_rows():
-            rows = []
-            for i, (label, time) in enumerate(references):
-                wgt_label = widgets.Text(value=label, description="Label:", style=self._style)
-                wgt_label.observe(lambda traitlet, i=i: set_reference_value(i, 0, traitlet["new"]), names="value")
-                wgt_time = widgets.widget_datetime.NaiveDatetimePicker(
-                    value=time,
-                    description="time:",
-                    style=self._style,
-                    layout=self._layout,
-                )
-                wgt_time.observe(lambda traitlet, i=i: set_reference_value(i, 1, traitlet["new"]), names="value")
-                btn_remove = widgets.Button(description="Remove", tooltip=f"Remove {label}")
-                btn_remove.on_click(lambda _, i=i: remove_reference(i))
-                rows.append(widgets.HBox([wgt_label, wgt_time, btn_remove]))
-            wrapper_rows.children = rows
-
-        btn_add = widgets.Button(description="Add Reference Time")
-        btn_add.on_click(add_reference)
-        show_rows()
-        return widgets.VBox([wrapper_rows, btn_add])
+    def _default_reference_time(self):
+        # at the start of the first event
+        return self.parameters.date_ranges[0][0]
 
     def _event_references(self, vda, event_no):
         """The reference times inside the data range of the event"""
@@ -941,6 +981,8 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
             ])
         return self._settings[name]
 
+    _REFERENCE_TIMES_PLOTS = "in the combined plot and the VDA plots of the spacecraft"
+
     def _plots_tab(self):
         tab = super()._plots_tab()
         w = widgets.Checkbox(value=self.show_spacecraft_plots,
@@ -1026,14 +1068,7 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
             index=pd.Index(list(vdas), name="Spacecraft"),
         )
         for label, vda in vdas.items():
-            res = self.results.loc[label]
-            print(label)
-            if pd.isna(res.get("APL")):
-                print("    No results (not enough onset points)\n")
-                continue
-            print(f"    Release Time : {res['Release Time']} ± {vda.format_timedelta(res['Release Time Error'])}")
-            print(f"    Extra Time   : {vda.format_timedelta(res['Extra Time'])}")
-            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+            _print_results(label, self.results.loc[label], vda.format_timedelta)
         references = self._event_references(next(iter(vdas.values())), 1)
         if self.show_spacecraft_plots:
             for name, notebook in self.analyses.items():
@@ -1043,3 +1078,226 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
         filename = views.vda_combined_plot_filename(vdas) if self.save_plots else None
         _show_figure(views.plot_vda_combined(vdas, 1, filename, references))
         self._show(self.results)
+
+
+class VDA_custom_points_notebook(_NotebookBase):
+    _REFERENCE_TIMES_PLOTS = "in the VDA plot"
+    _SAVE_PLOTS_DESCRIPTION = "Save the VDA plot as a .png file"
+
+    def __init__(self):
+        """Notebook interface of the VDA fit of onset points given by the user.
+
+        The points are in groups (e.g. one per spacecraft), each with a label, the distance of its observer from the
+        Sun (AU) and its points: (onset time, energy, particle), with the energy as a single value or a range in MeV
+        (e.g. "13.5" or "13-16"). They are entered in the form, loaded into it with load_points(), or read from the
+        points file (points_filepath) instead of the form.
+        """
+        super().__init__()
+        # points file used instead of the groups of the form, if set
+        self.points_filepath = ""
+        # groups of the form: {"label", "distance", "points": [[onset time, energy, particle], ...]}
+        self.groups = [self._new_group(1)]
+        self.title = ""
+        # the VDA fit of each group, after run_vda()
+        self.vdas = {}
+        self.results = None
+
+    @staticmethod
+    def _new_group(number):
+        return {"label": f"Group {number}", "distance": 1.0, "points": []}
+
+    def load_points(self, filepath):
+        """Loads the points of a points file into the groups of the form, to see or change them"""
+        self.groups = [
+            {
+                "label": label,
+                "distance": vda.distance,
+                "points": [
+                    [f"{row['Onset Time']:%Y-%m-%d %H:%M:%S}",
+                     f"{row['Low Energy']:g}" if row["Low Energy"] == row["High Energy"]
+                     else f"{row['Low Energy']:g}-{row['High Energy']:g}",
+                     row["Particle"]]
+                    for _, row in vda.points.iterrows()
+                ],
+            }
+            for label, vda in read_points_file(filepath).items()
+        ]
+
+    ############### Parameters form ###############
+    def parameters_form(self):
+        """All the parameters, in tabs"""
+        tabs = widgets.Tab(children=[self._points_tab(), self._plots_tab()])
+        for i, title in enumerate(["Points", "Views/Plots"]):
+            tabs.set_title(i, title)
+        return tabs
+
+    def _set_enabled(self, widget, enabled):
+        """Grays out (or activates again) the widget and all the widgets in it"""
+        if hasattr(widget, "disabled"):
+            # a single group cannot be removed
+            single_group = getattr(widget, "description", "") == "Remove Group" and len(self.groups) == 1
+            widget.disabled = not enabled or single_group
+        for child in getattr(widget, "children", ()):
+            self._set_enabled(child, enabled)
+
+    def _points_tab(self):
+        wgt_file = widgets.Text(value=self.points_filepath, description="Points file:", style=self._style,
+                                layout=self._layout,
+                                placeholder="Path to .csv - Leave blank to use the groups of points below")
+        wgt_file_info = widgets.HTML()
+        wgt_groups = self._groups_widget()
+
+        def update(_=None):
+            self.points_filepath = wgt_file.value
+            # the groups are grayed out as soon as a points file is typed
+            self._set_enabled(wgt_groups, not self.points_filepath)
+            wgt_file_info.value = self._points_file_info(self.points_filepath)
+
+        wgt_file.observe(update, names="value")
+        update()
+        return widgets.VBox([
+            self._section("Points file", wgt_file, wgt_file_info,
+                          self._note("Columns: Group (optional), Distance (AU), Particle, Energy (MeV, e.g. 13.5 or "
+                                     "13-16) and Onset Time, one row per point (see "
+                                     "examples/custom_points_example.csv)")),
+            self._section("Groups of points (used when there is no points file)", wgt_groups),
+        ])
+
+    def _points_file_info(self, filepath):
+        if not filepath:
+            return ""
+        if not os.path.isfile(filepath):
+            return "<i>File not found</i>"
+        try:
+            groups = read_points_file(filepath)
+        except ValueError as e:
+            return f"<pre>{html.escape(str(e))}</pre>"
+        n_points = sum(len(vda.points) for vda in groups.values())
+        return f"<i>{len(groups)} groups, {n_points} points: {html.escape(', '.join(groups))}</i>"
+
+    def _groups_widget(self):
+        """A tab per group of points, and a button to add groups"""
+        tabs = widgets.Tab()
+
+        def show_groups(selected=0):
+            tabs.children = [self._group_widget(i, show_groups) for i in range(len(self.groups))]
+            for i, group in enumerate(self.groups):
+                tabs.set_title(i, group["label"])
+            tabs.selected_index = selected
+
+        def add_group(_):
+            self.groups.append(self._new_group(len(self.groups) + 1))
+            show_groups(len(self.groups) - 1)
+
+        btn_add = widgets.Button(description="Add Group")
+        btn_add.on_click(add_group)
+        show_groups()
+        self._groups_tabs = tabs
+        return widgets.VBox([tabs, btn_add])
+
+    def _group_widget(self, i, show_groups):
+        """Label, distance and points of a group, with buttons to add and remove points"""
+        group = self.groups[i]
+        wrapper_rows = widgets.VBox()
+
+        wgt_label = widgets.Text(value=group["label"], description="Label:", style=self._style)
+
+        def set_label(traitlet):
+            group["label"] = traitlet["new"]
+            self._groups_tabs.set_title(i, traitlet["new"])
+
+        wgt_label.observe(set_label, names="value")
+        wgt_distance = widgets.BoundedFloatText(value=group["distance"], min=0.01, max=100, step=0.0001,
+                                                description="Distance from the Sun (AU):", style=self._style)
+        wgt_distance.observe(lambda traitlet: group.__setitem__("distance", traitlet["new"]), names="value")
+        btn_remove_group = widgets.Button(description="Remove Group", tooltip=f"Remove {group['label']}",
+                                          disabled=len(self.groups) == 1)
+
+        def remove_group(_):
+            del self.groups[i]
+            show_groups(max(i - 1, 0))
+
+        btn_remove_group.on_click(remove_group)
+
+        def set_point_value(j, k, value):
+            group["points"][j][k] = value
+
+        def remove_point(j):
+            del group["points"][j]
+            show_rows()
+
+        def add_point(_):
+            # a copy of the last point, to be changed
+            group["points"].append(list(group["points"][-1]) if group["points"] else ["", "", "protons"])
+            show_rows()
+
+        def show_rows():
+            rows = []
+            for j, (onset, energy, particle) in enumerate(group["points"]):
+                wgt_onset = widgets.Text(value=str(onset), description=f"Point {j + 1} onset:", style=self._style,
+                                         placeholder="e.g. 2024-11-21 18:20:14")
+                wgt_onset.observe(lambda traitlet, j=j: set_point_value(j, 0, traitlet["new"]), names="value")
+                wgt_energy = widgets.Text(value=str(energy), description="energy (MeV):", style=self._style,
+                                          placeholder="e.g. 13.5 or 13-16")
+                wgt_energy.observe(lambda traitlet, j=j: set_point_value(j, 1, traitlet["new"]), names="value")
+                wgt_particle = widgets.Dropdown(options=["protons", "electrons"],
+                                                value=PARTICLE_NAMES.get(str(particle).strip().lower(), "protons"),
+                                                description="particle:", style=self._style)
+                wgt_particle.observe(lambda traitlet, j=j: set_point_value(j, 2, traitlet["new"]), names="value")
+                btn_remove = widgets.Button(description="Remove", tooltip=f"Remove point {j + 1}")
+                btn_remove.on_click(lambda _, j=j: remove_point(j))
+                rows.append(widgets.HBox([wgt_onset, wgt_energy, wgt_particle, btn_remove]))
+            wrapper_rows.children = rows
+
+        btn_add = widgets.Button(description="Add Point")
+        btn_add.on_click(add_point)
+        show_rows()
+        return widgets.VBox([
+            widgets.HBox([wgt_label, wgt_distance, btn_remove_group]),
+            wrapper_rows,
+            btn_add,
+        ])
+
+    def _plots_sections(self):
+        wgt_title = widgets.Text(value=self.title, description="Title:", style=self._style, layout=self._layout,
+                                 placeholder="Title of the VDA plot - Leave blank for 'VDA of' the date of the onsets")
+        wgt_title.observe(lambda traitlet: setattr(self, "title", traitlet["new"]), names="value")
+        plots, *sections = super()._plots_sections()
+        plots.children += (wgt_title,)
+        return [plots, *sections]
+
+    def _default_reference_time(self):
+        # the earliest onset of the groups
+        onsets = pd.to_datetime([p[0] for g in self.groups for p in g["points"]], errors="coerce").dropna()
+        return onsets.min().to_pydatetime().replace(second=0) if len(onsets) else super()._default_reference_time()
+
+    ############### VDA ###############
+    def group_vdas(self) -> dict:
+        """The VDA fit of each group of points ({label: CustomPointsVDA}), from the points file or the form"""
+        if self.points_filepath:
+            return read_points_file(self.points_filepath)
+        vdas = {}
+        for group in self.groups:
+            label = group["label"].strip()
+            if not label or label in vdas:
+                raise ValueError(f"Group {label!r}: give each group a different label")
+            try:
+                points = points_df(group["points"])
+            except ValueError as e:
+                raise ValueError(f"Group {label!r}: {e}") from None
+            vdas[label] = CustomPointsVDA(points, group["distance"], name=f"group {label}")
+        return vdas
+
+    def run_vda(self):
+        """Fits the VDA line of each group of points, prints the results and plots them together"""
+        self.vdas = self.group_vdas()
+        for vda in self.vdas.values():
+            vda.compute_vda()
+        self.results = pd.DataFrame([vda.results.loc[CustomPointsVDA.EVENT_NO] for vda in self.vdas.values()],
+                                    index=pd.Index(list(self.vdas), name="Group"))
+        for label, vda in self.vdas.items():
+            _print_results(label, self.results.loc[label], vda.format_timedelta)
+        filename = views.custom_points_plot_filename(self.vdas) if self.save_plots else None
+        references = [(label, time) for label, time in self.reference_times if time is not None]
+        _show_figure(views.plot_vda_combined(self.vdas, CustomPointsVDA.EVENT_NO, filename, references,
+                                             self.title or None))

@@ -4,11 +4,11 @@ The analysis code can be used in scripts or other notebooks:
 
 | File | Contents |
 |---|---|
-| `spearhead.vda.analysis` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit) |
+| `spearhead.vda.analysis` | `VDA`: the analysis (events, data, channel grouping, onsets, VDA fit). `CustomPointsVDA`: the VDA fit of onset points given by the user |
 | `spearhead.vda.conf` | `VDA_parameters`: the parameters of the analysis, and the `OnsetSelection` enum |
 | `spearhead.vda.observers` | The observers (spacecraft): their sensors, channels and viewings, data loading and distance from the Sun |
 | `spearhead.vda.views` | The plots, as matplotlib figures (not displayed, saved only if a filename is given) |
-| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_multi_event.ipynb` (parameters form, analysis steps and their widgets), and `VDA_multi_spacecraft_notebook`: the interface of `vda_multi_spacecraft.ipynb` |
+| `spearhead.vda.notebook` | `VDA_notebook`: the interface of `vda_multi_event.ipynb` (parameters form, analysis steps and their widgets), `VDA_multi_spacecraft_notebook`: the interface of `vda_multi_spacecraft.ipynb`, and `VDA_custom_points_notebook`: the interface of `vda_custom_points.ipynb` |
 
 `VDA`, `VDA_parameters` and `OnsetSelection` can also be imported directly from `spearhead.vda`.
 
@@ -80,9 +80,29 @@ The functions of `spearhead.vda.views` return a matplotlib figure without showin
 | `plot_bg(vda, event_no)` | Grouped channels of the event with its background window |
 | `plot_onsets(vda, event_no, sensor, particle, prefix, channel, selected_viewing=None)` | Detected onsets of a grouped channel, one subplot per viewing |
 | `plot_vda(vda, event_no, references=None)` | VDA fit of the event (after `vda.compute_vda()`), with the proton points as circles and the electron points as stars. `references` is an optional list of (label, datetime) reference times (e.g. `[("SXR peak", datetime(2021, 10, 28, 15, 35))]`), shown at inverse beta 0 with the fit line extended to it |
-| `plot_vda_combined(vdas, event_no=1, references=None)` | VDA fits of the same event from several spacecraft (after `vda.compute_vda()` of each), with `vdas` as `{label: vda}` (e.g. `{"STEREO-A": vda_sta, "SOHO": vda_soho}`): the points and fit of each spacecraft in its color, the fit lines extended to inverse beta 0, and the optional reference times |
+| `plot_vda_combined(vdas, event_no=1, references=None, title=None)` | VDA fits of the same event from several spacecraft or groups of custom points (after `vda.compute_vda()` of each), with `vdas` as `{label: vda}` (e.g. `{"STEREO-A": vda_sta, "SOHO": vda_soho}`): the points and fit of each spacecraft in its color, the fit lines extended to inverse beta 0, and the optional reference times |
 
-`vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot, and `vda_combined_plot_filename(vdas, event_no=1)` that of the combined plot. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
+`vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot, `vda_combined_plot_filename(vdas, event_no=1)` that of the combined plot, and `custom_points_plot_filename(vdas)` that of the plot of custom points. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
+
+## Custom points
+
+`CustomPointsVDA(points, distance)` is the VDA fit of one group of onset points given by the user, with the distance of its observer from the Sun (AU). `points` is a DataFrame with the onset time, particle and energy range of each point, created from (onset time, energy, particle) points with `points_df`, the energy as a single value or a range in MeV. `read_points_file(path)` reads a points file (see the [user guide](user_guide.md#custom-points)) into `{group: CustomPointsVDA}`:
+
+```python
+from spearhead.vda import views
+from spearhead.vda.analysis import CustomPointsVDA, points_df, read_points_file
+
+vdas = read_points_file("examples/custom_points_example.csv")
+# or one group, from its points
+vdas = {"SOHO": CustomPointsVDA(points_df([("2024-11-21 18:20:14", "0.67-10.04", "electrons"),
+                                            ("2024-11-21 18:28:07", "64-80", "protons"),
+                                            ("2024-11-21 18:58:07", "13-16", "protons")]), distance=0.9794)}
+for vda in vdas.values():
+    vda.compute_vda()   # results in vda.results, with the event number 1
+fig = views.plot_vda_combined(vdas, references=[("SXR peak", "2024-11-21 17:40")])
+```
+
+The energy of a point is the geometric mean of its range (`analysis.mean_energy`), and its inverse beta is `analysis.inverse_beta(energy, particle)`, as in the VDA of the data. The VDA fit of both is `analysis.fit_vda`.
 
 ## Widgets in another notebook
 

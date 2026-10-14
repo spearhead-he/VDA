@@ -6,7 +6,10 @@ The VDA class performs the steps of the analysis:
 - onsets: onset times of each grouped channel and viewing, and the selection of the ones used for the fit
 - VDA fit: release time and apparent path length of each event
 
-Its parameters are in conf.py, the observers (spacecraft) in observers.py and its plots in views.py.
+CustomPointsVDA is the VDA fit of onset points given by the user (onset time, energy and particle of each point),
+in groups (e.g. one per spacecraft), read from a points file with read_points_file() or created from a DataFrame.
+
+The parameters of VDA are in conf.py, the observers (spacecraft) in observers.py and its plots in views.py.
 """
 import numpy as np
 import pandas as pd
@@ -22,6 +25,49 @@ from datetime import datetime, timedelta
 from pyonset import onset_determination
 
 from .observers import OBSERVERS
+
+# Rest mass energy of the particles, in MeV
+M_REST = {"protons": 938.27, "electrons": 0.511}
+
+
+def mean_energy(low_energy, high_energy) -> float:
+    """Energy of a channel (the geometric mean of its range) in MeV. A single energy has low_energy == high_energy"""
+    return sqrt(low_energy) * sqrt(high_energy)
+
+
+def inverse_beta(energy, particle) -> float:
+    """Inverse of the speed (in units of the speed of light) of a particle with the kinetic energy (MeV)"""
+    return 1 / sqrt(1 - (1 / (1 + energy / M_REST[particle])) ** 2)
+
+
+def fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, name) -> tuple:
+    """Fits the VDA line of the points: onset_seconds (seconds after t0) against inv_betas.
+
+    t_sun_to_observer is the light travel time from the Sun to the observer (seconds), and name names the points in
+    the messages (e.g. "event 1"). Returns the results (release time, extra time, APL and their errors) and the fit
+    (line t = a * inverse beta + b, with the error of b).
+    """
+    try:
+        p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
+        a = p[0]
+        b = p[1]
+        a_error = np.sqrt(V[0][0])
+        b_error = np.sqrt(V[1][1])
+    except ValueError:
+        # not enough points for cov matrix
+        print(f"Not enough points for covariance matrix generation in {name}")
+        a, b = np.polyfit(inv_betas, onset_seconds, 1)
+        a_error = 0
+        b_error = 0
+    results = {
+        "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
+        "Release Time Error": timedelta(seconds=b_error),
+        "Extra Time": timedelta(seconds=t_sun_to_observer),
+        "APL": a / t_sun_to_observer,
+        "APL Error": a_error / t_sun_to_observer,
+    }
+    fit = {"a": a, "b": b, "b_error": b_error}
+    return results, fit
 
 
 class VDA:
@@ -64,7 +110,7 @@ class VDA:
     PARTICLE_COLUMN_PREFIX = {"protons": PROTON_COLUMN_PREFIX, "electrons": ELECTRON_COLUMN_PREFIX}
 
     ############### VDA ###############
-    M_REST = {"protons": 938.27, "electrons": 0.511}
+    M_REST = M_REST
 
     @property
     def observer(self):
@@ -672,10 +718,8 @@ class VDA:
                 ].columns
             ):
                 low_energy, high_energy = self.channel_energy_range(sensor, particle, particle_prefix, channel)
-                geo_mean = sqrt(low_energy) * sqrt(high_energy)
-                inv_beta = 1 / sqrt(
-                    1 - (1 / (1 + geo_mean / self.M_REST[particle])) ** 2
-                )
+                geo_mean = mean_energy(low_energy, high_energy)
+                inv_beta = inverse_beta(geo_mean, particle)
                 rows.append({"Geomagnetic Mean": geo_mean, "Inverse Beta": inv_beta})
                 index.append((sensor, particle, channel))
         self.df_channels_chars = pd.DataFrame(
@@ -757,34 +801,136 @@ class VDA:
             onset_seconds = np.array([p[1] for p in vda_points])
             particles = np.array([p[2] for p in vda_points])
 
-            try:
-                p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
-                a = p[0]
-                b = p[1]
-                a_error = np.sqrt(V[0][0])
-                b_error = np.sqrt(V[1][1])
-            except ValueError:
-                # not enough points for cov matrix
-                print(
-                    f"Not enough points for covariance matrix generation in event {index_event}"
-                )
-                a, b = np.polyfit(inv_betas, onset_seconds, 1)
-                a_error = 0
-                b_error = 0
-
-            self.results.loc[index_event] = {
-                "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
-                "Release Time Error": timedelta(seconds=b_error),
-                "Extra Time": timedelta(seconds=t_sun_to_observer),
-                "APL": a / t_sun_to_observer,
-                "APL Error": a_error / t_sun_to_observer,
-            }
+            results, fit = fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, f"event {index_event}")
+            self.results.loc[index_event] = results
             self.vda_fits[index_event] = {
                 "t0": t0,
                 "inv_betas": inv_betas,
                 "onset_seconds": onset_seconds,
                 "particles": particles,
-                "a": a,
-                "b": b,
-                "b_error": b_error,
+                **fit,
             }
+
+
+class CustomPointsVDA:
+    """VDA fit of one group of onset points given by the user (e.g. the points of one spacecraft).
+
+    points: DataFrame with the "Onset Time", "Particle" ("protons" or "electrons"), "Low Energy" and "High Energy" (MeV)
+    of each point. The energy of a point is the geometric mean of its range; a single energy has equal low and high.
+    distance: distance of the observer from the Sun (AU), for the light travel time (extra time) and the APL.
+
+    As in VDA, compute_vda() stores the results in self.results and the fit in self.vda_fits, with the event number 1,
+    so that views.plot_vda_combined can plot them.
+    """
+    EVENT_NO = 1
+    format_timedelta = staticmethod(VDA.format_timedelta)
+
+    def __init__(self, points: pd.DataFrame, distance: float, name: str = "the points"):
+        self.points = points
+        self.distance = distance
+        self.name = name
+        self.results = pd.DataFrame(columns=["Release Time", "Release Time Error", "Extra Time", "APL", "APL Error"])
+        self.vda_fits = {}
+
+    def compute_vda(self) -> None:
+        self.results = self.results.iloc[0:0]
+        self.vda_fits = {}
+        if len(self.points) < 2:
+            print(f"Not enough onset points in {self.name}.")
+            self.results.loc[self.EVENT_NO] = np.nan
+            return
+        points = self.points.assign(**{
+            "Inverse Beta": [
+                inverse_beta(mean_energy(row["Low Energy"], row["High Energy"]), row["Particle"])
+                for _, row in self.points.iterrows()
+            ]
+        }).sort_values("Inverse Beta", kind="stable")
+        onsets = pd.to_datetime(points["Onset Time"])
+        # onset times are fitted in seconds from the earliest onset
+        t0 = onsets.min().to_pydatetime()
+        onset_seconds = np.array([(onset.to_pydatetime() - t0).total_seconds() for onset in onsets])
+        inv_betas = points["Inverse Beta"].to_numpy()
+        t_sun_to_observer = (self.distance * u.AU / const.c).to(u.s).value
+        results, fit = fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, self.name)
+        self.results.loc[self.EVENT_NO] = results
+        self.vda_fits[self.EVENT_NO] = {
+            "t0": t0,
+            "inv_betas": inv_betas,
+            "onset_seconds": onset_seconds,
+            "particles": points["Particle"].to_numpy(),
+            **fit,
+        }
+
+
+PARTICLE_NAMES = {"protons": "protons", "p": "protons", "electrons": "electrons", "e": "electrons"}
+
+# Group of the points of a points file without a "Group" column
+DEFAULT_POINTS_GROUP = "Points"
+
+
+def parse_particle(text) -> str:
+    """The particle, "protons" or "electrons", from e.g. "Protons" or "e"."""
+    particle = PARTICLE_NAMES.get(str(text).strip().lower())
+    if particle is None:
+        raise ValueError(f"Unknown particle {text!r}: use protons (or p) or electrons (or e)")
+    return particle
+
+
+def parse_energy(text) -> tuple:
+    """(low, high) energy in MeV, from a single energy (e.g. "13.5") or a range (e.g. "13-16")"""
+    parts = str(text).strip().split("-")
+    try:
+        if len(parts) not in (1, 2):
+            raise ValueError
+        low, high = float(parts[0]), float(parts[-1])
+    except ValueError:
+        raise ValueError(f"Invalid energy {text!r}: use a single energy (e.g. 13.5) or a range (e.g. 13-16), in MeV") \
+            from None
+    if low <= 0 or high < low:
+        raise ValueError(f"Invalid energy {text!r}: the energies must be positive, and the range from low to high")
+    return low, high
+
+
+def points_df(points) -> pd.DataFrame:
+    """Points DataFrame of CustomPointsVDA from (onset time, energy, particle) points, e.g.
+    ("2024-11-21 18:20:14", "0.67-10.04", "electrons"), with the energy as in parse_energy()"""
+    rows = []
+    for i, (onset, energy, particle) in enumerate(points, start=1):
+        try:
+            low, high = parse_energy(energy)
+            rows.append({"Onset Time": pd.Timestamp(onset), "Particle": parse_particle(particle),
+                         "Low Energy": low, "High Energy": high})
+        except ValueError as e:
+            raise ValueError(f"Point {i}: {e}") from None
+    return pd.DataFrame(rows, columns=["Onset Time", "Particle", "Low Energy", "High Energy"])
+
+
+POINTS_FILE_COLUMNS = ("Group", "Distance", "Particle", "Energy", "Onset Time")
+
+
+def read_points_file(filepath: str) -> dict:
+    """Reads a points file: one row per point, with the columns Group (optional), Distance (AU, the same for all the
+    points of a group), Particle, Energy (single energy or range, MeV) and Onset Time.
+
+    Returns {group: CustomPointsVDA}, in the order of the file.
+    """
+    df = pd.read_csv(filepath, skipinitialspace=True, dtype=str)
+    df.columns = df.columns.str.strip()
+    required = [c for c in POINTS_FILE_COLUMNS if c != "Group"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns in {filepath}: {', '.join(missing)}\n"
+                         f"Accepted columns: {', '.join(POINTS_FILE_COLUMNS)} (Group is optional)")
+    if "Group" not in df.columns:
+        df["Group"] = DEFAULT_POINTS_GROUP
+    groups = {}
+    for group, df_group in df.groupby("Group", sort=False):
+        distances = pd.to_numeric(df_group["Distance"], errors="coerce").dropna().unique()
+        if len(distances) != 1:
+            raise ValueError(f"Group {group!r} of {filepath}: give one distance (AU) for all its points")
+        try:
+            points = points_df(zip(df_group["Onset Time"], df_group["Energy"], df_group["Particle"]))
+        except ValueError as e:
+            raise ValueError(f"Group {group!r} of {filepath}: {e}") from None
+        groups[group] = CustomPointsVDA(points, float(distances[0]), name=f"group {group}")
+    return groups

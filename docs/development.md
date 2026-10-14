@@ -29,6 +29,7 @@ The tests are in `tests/`, one file per part of the tool:
 | `test_parameters.py` | Parameters |
 | `test_notebook.py` | Notebook interface: the widgets of the parameters form, the background window and onset selection, and the steps of the analysis |
 | `test_multi_spacecraft.py` | Multi-spacecraft notebook: the parameters form, the analysis of each spacecraft and the combined VDA plot |
+| `test_custom_points.py` | Custom points: their VDA fit, energies and particles, the points file, the plot and the notebook |
 | `test_end_to_end.py` | The default event, from the download of the data to the VDA plot, compared with its baseline image |
 
 All the tests except the end-to-end test run offline, with synthetic data (the helpers are in `tests/helpers.py`). The tests that download data are marked `network` and run after the offline tests. To run all the tests, from the base directory of the repository:
