@@ -80,10 +80,14 @@ The workflow `.github/workflows/publish.yml` builds the package (sdist and wheel
 
 The package `spearhead-vda` is published to [PyPI](https://pypi.org/project/spearhead-vda/) by `.github/workflows/publish.yml` when a GitHub release is published, with trusted publishing: the PyPI project trusts this workflow and its GitHub environment `pypi`, so no tokens are needed. Publishing waits for the approval of the environment's reviewers. The version is `spearhead.vda.__version__`, which must be new on PyPI.
 
-Running the workflow manually (Actions > publish > Run workflow) publishes the package to [TestPyPI](https://test.pypi.org/project/spearhead-vda/) (environment `testpypi`), e.g. to check a release before publishing it. A version can be uploaded only once to each index. To install from TestPyPI, with the dependencies from PyPI:
+Running the workflow manually (Actions > publish > Run workflow) publishes the package to [TestPyPI](https://test.pypi.org/project/spearhead-vda/) (environment `testpypi`), e.g. to check a release before publishing it. A version can be uploaded only once to each index. To install from TestPyPI, download the package without its dependencies (TestPyPI has broken test versions of some of them), then install it with its dependencies from PyPI, e.g. for version 1.0.0:
 
 ```bash
-pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "spearhead-vda[notebook]"
+pip download --no-deps --index-url https://test.pypi.org/simple/ spearhead-vda==1.0.0 -d dist_test
+```
+
+```bash
+pip install "dist_test/spearhead_vda-1.0.0-py3-none-any.whl[notebook]"
 ```
 
 To build and check the package locally:
