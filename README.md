@@ -37,11 +37,20 @@ You can access the complete VDA tool online on the JupyterHub server of the SPEA
 ### Install locally
 
 1. This tool requires a recent Python (>=3.11) installation. [Following SunPy's approach, we recommend installing Python via miniforge (click for instructions).](https://docs.sunpy.org/en/stable/tutorial/installation.html#installing-python)
-2. [Download this file](https://github.com/spearhead-he/VDA/archive/refs/heads/main.zip) and extract to a folder of your choice (or clone the repository [https://github.com/spearhead-he/VDA](https://github.com/spearhead-he/VDA) if you know how to use `git`).
-3. Open a terminal or the miniforge prompt and move to the directory where the code is.
-4. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
-5. Install the tool and its dependencies with `pip install -e ".[notebook]"` (or, equivalently, `pip install -r requirements.txt`)
-6. Open the Jupyter Notebook by running `jupyter-lab vda_multi_event.ipynb` (or `jupyter-lab vda_multi_spacecraft.ipynb`, `jupyter-lab vda_custom_points.ipynb`)
+2. Open a terminal or the miniforge prompt, create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
+3. Install the tool and its dependencies from [PyPI](https://pypi.org/project/spearhead-vda/) with `pip install "spearhead-vda[notebook]"`
+4. Download the notebooks and their example files into a folder of your choice (here `vda`) with `spearhead-vda-notebooks vda`, and move to it with `cd vda`
+5. Open a Jupyter Notebook by running `jupyter-lab vda_multi_event.ipynb` (or `jupyter-lab vda_multi_spacecraft.ipynb`, `jupyter-lab vda_custom_points.ipynb`)
+
+### Install from the repository
+
+To use the latest code of the repository or change it:
+
+1. [Download this file](https://github.com/spearhead-he/VDA/archive/refs/heads/main.zip) and extract to a folder of your choice (or clone the repository [https://github.com/spearhead-he/VDA](https://github.com/spearhead-he/VDA) if you know how to use `git`).
+2. Open a terminal or the miniforge prompt and move to the directory where the code is.
+3. Create a new virtual environment (e.g., `conda create --name vda python=3.12`) and activate it (e.g., `conda activate vda`).
+4. Install the tool and its dependencies with `pip install -e ".[notebook]"` (or, equivalently, `pip install -r requirements.txt`)
+5. Open the Jupyter Notebook by running `jupyter-lab vda_multi_event.ipynb` (or `jupyter-lab vda_multi_spacecraft.ipynb`, `jupyter-lab vda_custom_points.ipynb`)
 
 ## How to use
 
@@ -58,22 +67,22 @@ tool.run_onsets()            # onsets, and their selection
 tool.run_vda()               # results and plots
 ```
 
-The events are given with a .csv file (datetime ranges or reference times, see the [examples](examples/)) or entered in the form. See the [user guide](docs/user_guide.md) for details.
+The events are given with a .csv file (datetime ranges or reference times, see the [examples](https://github.com/spearhead-he/VDA/tree/main/examples/)) or entered in the form. See the [user guide](https://github.com/spearhead-he/VDA/blob/main/docs/user_guide.md) for details.
 
-The Notebook `vda_multi_spacecraft.ipynb` has the same cells, with `VDA_multi_spacecraft_notebook` instead of `VDA_notebook`, for one event and several spacecraft (see the [user guide](docs/user_guide.md#multiple-spacecraft)). The Notebook `vda_custom_points.ipynb` has a form with the onset points (or a points file, see the [example](examples/custom_points_example.csv)) and the VDA step (see the [user guide](docs/user_guide.md#custom-points)).
+The Notebook `vda_multi_spacecraft.ipynb` has the same cells, with `VDA_multi_spacecraft_notebook` instead of `VDA_notebook`, for one event and several spacecraft (see the [user guide](https://github.com/spearhead-he/VDA/blob/main/docs/user_guide.md#multiple-spacecraft)). The Notebook `vda_custom_points.ipynb` has a form with the onset points (or a points file, see the [example](https://github.com/spearhead-he/VDA/blob/main/examples/custom_points_example.csv)) and the VDA step (see the [user guide](https://github.com/spearhead-he/VDA/blob/main/docs/user_guide.md#custom-points)).
 
 ## What's new in v0.8.0
 
 - [pyonset](https://pypi.org/project/pyonset/) is installed from PyPI: installing the tool no longer needs `git`.
 
-See the [changelog](CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
+See the [changelog](https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
 ## Documentation
 
-- [User guide](docs/user_guide.md): the Notebooks, the spacecraft and their instruments, the parameters, the events files, background windows, onset selection, results, multiple spacecraft and custom points
-- [Using the VDA tool without the notebook](docs/library.md): the analysis code in scripts
-- [Development](docs/development.md): installation for development, the tests and the baseline image of the VDA plot
-- [Changelog](CHANGELOG.md)
+- [User guide](https://github.com/spearhead-he/VDA/blob/main/docs/user_guide.md): the Notebooks, the spacecraft and their instruments, the parameters, the events files, background windows, onset selection, results, multiple spacecraft and custom points
+- [Using the VDA tool without the notebook](https://github.com/spearhead-he/VDA/blob/main/docs/library.md): the analysis code in scripts
+- [Development](https://github.com/spearhead-he/VDA/blob/main/docs/development.md): installation for development, the tests and the baseline image of the VDA plot
+- [Changelog](https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md)
 
 ## Contributing
 

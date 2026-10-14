@@ -14,7 +14,13 @@ The analysis code can be used in scripts or other notebooks:
 
 ## Installation
 
-From the folder of the tool (see the [README](../README.md#install-locally)):
+From [PyPI](https://pypi.org/project/spearhead-vda/):
+
+```bash
+pip install spearhead-vda
+```
+
+or from the folder of the tool (see the [README](../README.md#install-from-the-repository)):
 
 ```bash
 pip install -e .
@@ -28,7 +34,9 @@ pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA"
 
 A specific release is installed with its tag, e.g. `pip install "spearhead-vda @ git+https://github.com/spearhead-he/VDA@v0.8.0"`.
 
-The extra `[notebook]` (e.g. `pip install -e ".[notebook]"`) also installs the notebook dependencies (Jupyter and ipywidgets), needed by `spearhead.vda.notebook`. The extra `[test]` installs the tools to run the tests (`pytest tests/`, see [Development](development.md)). The installed version is `spearhead.vda.__version__`.
+The extra `[notebook]` (e.g. `pip install "spearhead-vda[notebook]"`) also installs the notebook dependencies (Jupyter and ipywidgets), needed by `spearhead.vda.notebook`. The extra `[test]` installs the tools to run the tests (`pytest tests/`, see [Development](development.md)). The installed version is `spearhead.vda.__version__`.
+
+The notebooks and their example files are not part of the package: the command `spearhead-vda-notebooks [folder]` (or `spearhead.vda.notebooks.copy_notebooks(folder)`) downloads them from the GitHub release of the installed version, without replacing existing files (`--overwrite` replaces them).
 
 ## Example
 

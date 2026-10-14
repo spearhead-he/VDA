@@ -11,6 +11,7 @@ Modules:
 - views: the plots, as matplotlib figures
 - notebook: the interfaces of the notebooks with their widgets, VDA_notebook (multiple events),
   VDA_multi_spacecraft_notebook and VDA_custom_points_notebook (needs the notebook dependencies)
+- notebooks: download of the notebooks and their example files (the command spearhead-vda-notebooks)
 """
 from .analysis import VDA
 from .conf import OnsetSelection, VDA_parameters

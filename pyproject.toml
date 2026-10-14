@@ -13,6 +13,26 @@ authors = [
     {name = "Jan Gieseler"},
 ]
 requires-python = ">=3.11"
+keywords = [
+    "solar energetic particles",
+    "velocity dispersion analysis",
+    "release time",
+    "path length",
+    "heliophysics",
+    "space physics",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     "astropy>=6.1.7",
     "matplotlib>=3.6.3",
@@ -24,6 +44,9 @@ dependencies = [
     "sunpy[all]>=6.0.4",
 ]
 dynamic = ["version"]
+
+[project.scripts]
+spearhead-vda-notebooks = "spearhead.vda.notebooks:main"
 
 [project.optional-dependencies]
 notebook = [
@@ -45,6 +68,7 @@ test = [
 Repository = "https://github.com/spearhead-he/VDA"
 Documentation = "https://github.com/spearhead-he/VDA/tree/main/docs"
 Changelog = "https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md"
+Issues = "https://github.com/spearhead-he/VDA/issues"
 DOI = "https://doi.org/10.5281/zenodo.14441053"
 
 [tool.pytest.ini_options]
