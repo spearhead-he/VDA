@@ -4,6 +4,7 @@
 - [Tests](#tests)
 - [Baseline image](#baseline-image)
 - [Continuous integration](#continuous-integration)
+- [Publishing to PyPI](#publishing-to-pypi)
 
 ## Installation
 
@@ -29,6 +30,7 @@ The tests are in `tests/`, one file per part of the tool:
 | `test_parameters.py` | Parameters |
 | `test_notebook.py` | Notebook interface: the widgets of the parameters form, the background window and onset selection, and the steps of the analysis |
 | `test_multi_spacecraft.py` | Multi-spacecraft notebook: the parameters form, the analysis of each spacecraft and the combined VDA plot |
+| `test_notebooks_download.py` | Download of the notebooks and their example files (`spearhead-vda-notebooks`), without the network |
 | `test_custom_points.py` | Custom points: their VDA fit, energies and particles, the points file, the plot and the notebook |
 | `test_end_to_end.py` | The default event, from the download of the data to the VDA plot, compared with its baseline image |
 
@@ -71,3 +73,23 @@ pytest --mpl-generate-path=tests/baseline tests/test_end_to_end.py
 ## Continuous integration
 
 GitHub Actions (`.github/workflows/pytest.yml`) runs on every push and pull request, with Python 3.11 to 3.14: flake8, all the tests with the image comparison and coverage, and the notebook with nbmake. The coverage is uploaded to Codecov.
+
+The workflow `.github/workflows/publish.yml` builds the package (sdist and wheel) and checks it with `twine check` on every push and pull request.
+
+## Publishing to PyPI
+
+The package `spearhead-vda` is published to [PyPI](https://pypi.org/project/spearhead-vda/) by `.github/workflows/publish.yml` when a GitHub release is published, with trusted publishing: the PyPI project trusts this workflow and its GitHub environment `pypi`, so no tokens are needed. Publishing waits for the approval of the environment's reviewers. The version is `spearhead.vda.__version__`, which must be new on PyPI.
+
+Running the workflow manually (Actions > publish > Run workflow) publishes the package to [TestPyPI](https://test.pypi.org/project/spearhead-vda/) (environment `testpypi`), e.g. to check a release before publishing it. A version can be uploaded only once to each index. To install from TestPyPI, with the dependencies from PyPI:
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "spearhead-vda[notebook]"
+```
+
+To build and check the package locally:
+
+```bash
+pip install build twine
+python -m build
+twine check --strict dist/*
+```

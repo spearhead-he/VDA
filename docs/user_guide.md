@@ -13,7 +13,7 @@
 
 ## Notebook
 
-The tool has three notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft (described below), `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft (see [Multiple spacecraft](#multiple-spacecraft)), and `vda_custom_points.ipynb`, the VDA fit of onset points given by the user (see [Custom points](#custom-points)).
+The tool has three notebooks: `vda_multi_event.ipynb`, the VDA of one or more events from one spacecraft (described below), `vda_multi_spacecraft.ipynb`, the VDA of one event from several spacecraft (see [Multiple spacecraft](#multiple-spacecraft)), and `vda_custom_points.ipynb`, the VDA fit of onset points given by the user (see [Custom points](#custom-points)). They are in the folder of the tool, or, with the tool installed from PyPI, downloaded with `spearhead-vda-notebooks [folder]` (see the [README](../README.md#install-locally)).
 
 The notebook `vda_multi_event.ipynb` has a setup cell, a form with all the parameters, and one cell per step of the analysis:
 
