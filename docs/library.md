@@ -141,6 +141,7 @@ tool.onset_selection()        # after vda.select_onsets()
 | `onset_method`, `onset_method_parameters` | Onset determination method, `"sigma"` (parameters `s`, `n`) or `"poisson_cusum"` (parameters `cusum_minutes`, `sigma_multiplier`), see the [user guide](user_guide.md#onset-determination). Setting `onset_method` sets its parameters to their defaults |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |
+| `data_path` | Folder of the downloaded data files, with a subfolder per observer (default `"particle_data"`). A relative path is relative to the current directory when the data are downloaded, `~` is the home folder, and `""` means the default. `vda.DATA_PATH` is the resolved absolute path |
 
 Setting an unknown parameter (e.g. a typo) or a removed one raises an error.
 

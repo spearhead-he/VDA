@@ -21,7 +21,7 @@ from sunpy import log as sunpy_log
 
 from . import views
 from .analysis import VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, read_points_file
-from .conf import ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
+from .conf import DEFAULT_DATA_PATH, ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
 from .observers import OBSERVERS
 
 
@@ -359,12 +359,18 @@ class VDA_notebook(_NotebookBase):
             self._section("Resampling", self._text_widget(
                 "resample_frequency", "Resample frequency:",
                 "Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling")),
+            self._section("Downloaded data", self._data_path_widget()),
             self._section("Advanced: load previously saved data, or save the data",
                           self._text_widget("load_data_filepath", "Load the data from:",
                                             "Path to .pkl - Leave blank to download the data"),
                           self._text_widget("save_data_filepath", "Save the data to:",
                                             "Path to .pkl - Leave blank to not save the data")),
         ])
+
+    def _data_path_widget(self) -> widgets.Text:
+        return self._text_widget("data_path", "Data folder:",
+                                 f"Folder of the downloaded data files - Leave blank for {DEFAULT_DATA_PATH} "
+                                 "in the current directory")
 
     def _observer_widget(self):
         w = widgets.Dropdown(options=[(observer.label, name) for name, observer in OBSERVERS.items()],
@@ -862,8 +868,8 @@ class VDA_notebook(_NotebookBase):
 DEFAULT_SPACECRAFT = ("solo", "sta", "soho")
 
 # Parameters of VDA_multi_spacecraft_notebook shared by all the spacecraft, in the order they are copied
-SHARED_PARAMETERS = ("date_ranges", "bg_after_start", "onset_method", "onset_method_parameters", "onset_selection",
-                     "view_dfs")
+SHARED_PARAMETERS = ("date_ranges", "bg_after_start", "data_path", "onset_method", "onset_method_parameters",
+                     "onset_selection", "view_dfs")
 
 
 class VDA_multi_spacecraft_notebook(VDA_notebook):
@@ -936,8 +942,11 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
 
         wgt_start.observe(set_range, names="value")
         wgt_end.observe(set_range, names="value")
-        return self._section("Datetime range of the event (the same for all the spacecraft)",
-                             widgets.HBox([wgt_start, wgt_end]))
+        return widgets.VBox([
+            self._section("Datetime range of the event (the same for all the spacecraft)",
+                          widgets.HBox([wgt_start, wgt_end])),
+            self._section("Downloaded data (the same for all the spacecraft)", self._data_path_widget()),
+        ])
 
     def _spacecraft_tab(self):
         tabs = widgets.Tab()

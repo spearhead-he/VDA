@@ -75,6 +75,7 @@ The parameters form has five tabs:
   - the observer (spacecraft). Changing it sets the viewings and the grouped channels to the defaults of the observer. The energy ranges of its channels are read from the data of the first event: if there are no data (e.g. BepiColombo before 2020), an error is shown in red and the grouped channels (Energy channels tab) are grayed out until another spacecraft is chosen, or the events are changed and the channels are read again ("Read the channels again" button); the rest of the form can still be used
   - the viewings
   - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), blank for no resampling)
+  - the folder of the downloaded data files (by default `particle_data` in the current directory, i.e. the folder of the notebook; an absolute or relative path, `~` for the home folder). The files are kept, in a subfolder per spacecraft (`solo`, `stereo`, `psp`, `soho`, `wind`, `bepi`), so the data of an event are downloaded only once; a temporary folder (e.g. `tempfile.mkdtemp()`) does not keep them
   - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.
 - **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$. A note shows when the energy ranges of a sensor changed on a date (SOHO EPHIN, see [Observers](#observers)).
 - **Onsets**: the onset determination method and its parameters (see [Onset determination](#onset-determination)), the default background window, and the onset selection method.
@@ -140,7 +141,7 @@ tool.run_vda()               # results and combined plot
 
 The form has the tabs:
 
-- **Event**: the datetime range of the data of the event, the same for all the spacecraft.
+- **Event**: the datetime range of the data of the event and the folder of the downloaded data files (as in the multi-event notebook), the same for all the spacecraft.
 - **Spacecraft**: the spacecraft whose data are used (by default Solar Orbiter, STEREO-A and SOHO), and in a tab per spacecraft its viewings, resample frequency and grouped energy channels, starting from the defaults of the spacecraft (see [Observers](#observers)).
 - **Onsets**: the onset determination method and its parameters, the default background window and the onset selection method, the same for all the spacecraft (see [Onset determination](#onset-determination) and [Onset selection](#onset-selection)).
 - **Views/Plots**: as in the multi-event notebook, and whether the VDA plot of each spacecraft is also shown.

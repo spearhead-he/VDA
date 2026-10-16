@@ -5,6 +5,7 @@ from datetime import datetime
 import pytest
 
 from spearhead.vda import OnsetSelection, VDA_parameters
+from spearhead.vda.conf import DEFAULT_DATA_PATH
 from tests.helpers import make_vda
 
 
@@ -74,3 +75,7 @@ def test_default_channel_groups():
     }
     assert p.sensors_particles == {"het": ["protons", "electrons"]}
     assert p.viewings == ["sun"]
+
+
+def test_default_data_path():
+    assert VDA_parameters().data_path == DEFAULT_DATA_PATH == "particle_data"

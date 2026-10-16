@@ -153,6 +153,8 @@ class SolarOrbiter(Observer):
     )
 
     def load(self, sensor, startdate, enddate, viewing, path, particles=None) -> dict[str, ParticleData]:
+        path = os.path.join(path, "solo")
+        os.makedirs(path, exist_ok=True)
         df_protons, df_electrons, energies = epd_load(
             sensor=sensor,
             level="l2",

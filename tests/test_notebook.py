@@ -181,8 +181,10 @@ def test_data_tab_bindings(displayed):
     texts["Resample frequency:"].value = "10min"
     texts["Load the data from:"].value = "saved.pkl"
     texts["Save the data to:"].value = "new.pkl"
+    texts["Data folder:"].value = "~/sep_data"
     p = tool.parameters
     assert (p.resample_frequency, p.load_data_filepath, p.save_data_filepath) == ("10min", "saved.pkl", "new.pkl")
+    assert p.data_path == "~/sep_data"
 
 
 def test_viewings_checkboxes_keep_their_order(displayed):

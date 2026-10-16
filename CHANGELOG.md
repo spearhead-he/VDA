@@ -4,6 +4,12 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+- Parameter `data_path`: the folder of the downloaded data files, by default `particle_data` in the current directory (as before). It is in the Data tab of the multi-event notebook and in the Event tab of the multi-spacecraft notebook, where it is the same for all the spacecraft. A relative folder is relative to the current directory when the data are downloaded, and `~` is the home folder. See the [user guide](docs/user_guide.md#parameters).
+
+### Changed
+- The downloaded Solar Orbiter data files are in the subfolder `solo` of the data folder, as those of the other spacecraft are in their own subfolders. Solar Orbiter data downloaded with previous versions (in `particle_data/l2`) are downloaded again once, and the old files can be deleted.
+
 ## [1.0.0] - 2026-10-14
 
 ### Added
