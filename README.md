@@ -12,7 +12,7 @@
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
   - [Example output](#example-output)
-  - [What's new in v1.0.0](#whats-new-in-v100)
+  - [What's new in v1.1.0](#whats-new-in-v110)
   - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
@@ -86,15 +86,10 @@ The VDA plots of the notebooks with their default parameters and example data.
 
 <img src="https://raw.githubusercontent.com/spearhead-he/VDA/main/docs/images/vda_custom_points.png" alt="VDA fits of the custom points of the 2024-11-21 event, with reference times" width="700">
 
-## What's new in v1.0.0
+## What's new in v1.1.0
 
-- The tool is on [PyPI](https://pypi.org/project/spearhead-vda/): `pip install "spearhead-vda[notebook]"`, and the notebooks are downloaded with `spearhead-vda-notebooks` (see [Install locally](#install-locally)).
-- Three notebooks:
-  - `vda_multi_event.ipynb` (previously `vda_tool.ipynb`): the VDA of one or more events from one spacecraft
-  - `vda_multi_spacecraft.ipynb` (new): the VDA of one event from several spacecraft, with their VDA fits in one plot
-  - `vda_custom_points.ipynb` (new): the VDA fit of onset points given by the user, in groups (e.g. one per spacecraft), entered in its form or read from a points file
-- Reference times (e.g. SXR peak, type II and type III radio bursts) shown at inverse beta 0 in the VDA plots.
-- The spacecraft is named in the results and in the title of the VDA plot.
+- The folder of the downloaded data files can be chosen, in the Data tab of the multi-event notebook and the Event tab of the multi-spacecraft notebook (parameter `data_path`, by default `particle_data` in the current directory). The files are kept, with a subfolder per spacecraft, so the data of an event are downloaded only once.
+- The Solar Orbiter data files are in their own subfolder (`solo`), as those of the other spacecraft.
 
 See the [changelog](https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 
