@@ -4,11 +4,19 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-17
+
 ### Added
 - Parameter `data_path`: the folder of the downloaded data files, by default `particle_data` in the current directory (as before). It is in the Data tab of the multi-event notebook and in the Event tab of the multi-spacecraft notebook, where it is the same for all the spacecraft. A relative folder is relative to the current directory when the data are downloaded, and `~` is the home folder. See the [user guide](docs/user_guide.md#parameters).
 
 ### Changed
 - The downloaded Solar Orbiter data files are in the subfolder `solo` of the data folder, as those of the other spacecraft are in their own subfolders. Solar Orbiter data downloaded with previous versions (in `particle_data/l2`) are downloaded again once, and the old files can be deleted.
+
+### Upgrading from 1.0.0
+- Update the installation: `pip install --upgrade "spearhead-vda[notebook]"` (from PyPI), or update the files of the tool (download them again, or `git pull`) for an installation from its folder. The dependencies are unchanged.
+- The notebooks of the new version are downloaded with `spearhead-vda-notebooks --overwrite [folder]`. Notebooks of 1.0.0 keep working, and show the data folder field too (only their text does not mention it).
+- The data are still downloaded to `particle_data` in the current directory, except for Solar Orbiter, now in `particle_data/solo`.
+- The results are unchanged.
 
 ## [1.0.0] - 2026-10-14
 
@@ -191,7 +199,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
-[Unreleased]: https://github.com/spearhead-he/VDA/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/spearhead-he/VDA/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/spearhead-he/VDA/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/spearhead-he/VDA/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/spearhead-he/VDA/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/spearhead-he/VDA/compare/v0.6.0...v0.7.0
