@@ -22,7 +22,7 @@ The tests are in `tests/`, one file per part of the tool:
 |---|---|
 | `test_onsets.py` | Onset determination: Sigma threshold and Poisson-CUSUM |
 | `test_events.py` | Events input (files and datetime ranges) and background windows |
-| `test_data.py` | Grouping of the energy channels and saved data |
+| `test_data.py` | Grouping of the energy channels, saved data and the folder of the downloaded data |
 | `test_observers.py` | Observers (spacecraft): data loading, viewings and default grouped channels |
 | `test_onset_selection.py` | Onset selection |
 | `test_vda_fit.py` | VDA fit and plot |

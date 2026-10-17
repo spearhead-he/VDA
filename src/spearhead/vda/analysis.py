@@ -11,6 +11,8 @@ in groups (e.g. one per spacecraft), read from a points file with read_points_fi
 
 The parameters of VDA are in conf.py, the observers (spacecraft) in observers.py and its plots in views.py.
 """
+import os
+
 import numpy as np
 import pandas as pd
 import astropy.units as u
@@ -19,11 +21,11 @@ import astropy.constants as const
 from contextlib import redirect_stdout
 from io import StringIO
 from math import sqrt
-from os import getcwd
 from datetime import datetime, timedelta
 
 from pyonset import onset_determination
 
+from .conf import DEFAULT_DATA_PATH
 from .observers import OBSERVERS
 
 # Rest mass energy of the particles, in MeV
@@ -102,8 +104,10 @@ class VDA:
 
     ############### Particle Data ###############
     @property
-    def DATA_PATH(self):
-        return f"{getcwd()}/particle_data"
+    def DATA_PATH(self) -> str:
+        """Absolute path of the folder of the downloaded data files (parameters.data_path)"""
+        # resolved when the data are downloaded, so a relative path is relative to the current directory at that time
+        return os.path.abspath(os.path.expanduser(self.parameters.data_path or DEFAULT_DATA_PATH))
 
     PROTON_COLUMN_PREFIX = "H_Flux"
     ELECTRON_COLUMN_PREFIX = "Electron_Flux"

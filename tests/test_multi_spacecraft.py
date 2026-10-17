@@ -61,6 +61,9 @@ def test_parameters_form(displayed):
     # the datetime range of the event
     find(event_tab, description="end:")[0].value = datetime(2021, 10, 28, 21)
     assert tool.parameters.date_ranges == [(START, datetime(2021, 10, 28, 21))]
+    # the folder of the downloaded data
+    find(event_tab, widgets.Text, "Data folder:")[0].value = "sep_data"
+    assert tool.parameters.data_path == "sep_data"
     # a tab with the settings of each selected spacecraft
     settings = find(spacecraft_tab, widgets.Tab)[0]
     assert [settings.get_title(i) for i in range(len(settings.children))] == ["Solar Orbiter", "STEREO-A"]
@@ -86,16 +89,18 @@ def test_select_unknown_spacecraft(displayed):
         VDA_multi_spacecraft_notebook(["juice"])
 
 
-def test_shared_parameters(displayed):
+def test_shared_parameters(displayed, tmp_path):
     tool = make_tool()
     tool.parameters.date_ranges = [(START, datetime(2021, 10, 28, 19))]
     tool.parameters.onset_method = "poisson_cusum"
     tool.parameters.onset_method_parameters["cusum_minutes"] = 20
     tool.vda.set_default_bg_window(10, 50)
+    tool.parameters.data_path = str(tmp_path)
     tool.run_data()
     for name in ("solo", "sta"):
         parameters = tool.notebook(name).parameters
         assert parameters.date_ranges == [(START, datetime(2021, 10, 28, 19))]
+        assert parameters.data_path == str(tmp_path)
         assert parameters.onset_method == "poisson_cusum"
         assert parameters.onset_method_parameters["cusum_minutes"] == 20
         assert parameters.bg_after_start == (10, 50)

@@ -1,4 +1,4 @@
-"""Grouping of the energy channels and saved data"""
+"""Grouping of the energy channels, saved data and the folder of the downloaded data"""
 from datetime import datetime
 
 import pandas as pd
@@ -74,3 +74,31 @@ def test_loaded_data_of_another_observer(tmp_path):
     v = make_vda(load_data_filepath=str(tmp_path / "data.pkl"))
     with pytest.raises(ValueError, match="data of the 'other' observer"):
         v.construct_particles_df()
+
+
+@pytest.mark.parametrize("data_path, expected", [
+    ("particle_data", "{cwd}/particle_data"),
+    ("", "{cwd}/particle_data"),
+    ("data/sep", "{cwd}/data/sep"),
+    ("{tmp}/shared", "{tmp}/shared"),
+    ("~/sep_data", "{home}/sep_data"),
+])
+def test_data_path(tmp_path, monkeypatch, data_path, expected):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    v = make_vda(data_path=data_path.format(tmp=tmp_path))
+    assert v.DATA_PATH == expected.format(cwd=tmp_path, tmp=tmp_path, home=tmp_path / "home")
+
+
+def test_data_path_relative_to_the_current_directory_of_the_download(tmp_path, monkeypatch):
+    paths = []
+
+    def load(self, sensor, startdate, enddate, viewing, path, particles=None):
+        paths.append(path)
+        return {}
+
+    monkeypatch.setattr(observers.StereoA, "load", load)
+    v = make_vda(observer="sta", data_path="sep")
+    monkeypatch.chdir(tmp_path)
+    v._load_observer_data("het", "2021-10-28 14:00", "2021-10-28 15:00", "omni", ["protons"])
+    assert paths == [str(tmp_path / "sep")]

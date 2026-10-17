@@ -61,6 +61,9 @@ ONSET_METHOD_LABELS = {
     "poisson_cusum": "Poisson-CUSUM",
 }
 
+# Default folder of the downloaded data files, in the current directory
+DEFAULT_DATA_PATH = "particle_data"
+
 # Removed parameters: the version they were removed in and what replaces them
 REMOVED_PARAMETERS = {
     "input_type": ("v0.3.0", "Set input_filepath to the events file (its type is deduced from its columns), "
@@ -110,6 +113,9 @@ class VDA_parameters:
     load_data_filepath: str = ""
     # .pkl file to save the data to. If empty, the data are not saved
     save_data_filepath: str = ""
+    # Folder of the downloaded data files (a subfolder per observer), absolute or relative to the current directory.
+    # The files are kept, so the data of an event are downloaded only once. If empty, DEFAULT_DATA_PATH
+    data_path: str = DEFAULT_DATA_PATH
     # Observer (spacecraft) of the data, one of OBSERVERS
     observer: str = DEFAULT_OBSERVER
     # Selected viewings. Their order is the priority of the "Use all" onset selection.

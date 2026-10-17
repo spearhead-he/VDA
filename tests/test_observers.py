@@ -10,10 +10,19 @@ from spearhead.vda import observers
 from tests.helpers import epd_like_data, make_vda
 
 
-def test_solar_orbiter_load(monkeypatch):
+def test_solar_orbiter_load(monkeypatch, tmp_path):
     index = pd.date_range("2021-10-28 14:00", periods=4, freq="1min")
-    monkeypatch.setattr(observers, "epd_load", lambda **kwargs: epd_like_data(index, kwargs["sensor"]))
-    data = observers.SolarOrbiter().load("ept", index[0], index[-1], "sun", "path")
+    paths = []
+
+    def epd_load(**kwargs):
+        paths.append(kwargs["path"])
+        return epd_like_data(index, kwargs["sensor"])
+
+    monkeypatch.setattr(observers, "epd_load", epd_load)
+    data = observers.SolarOrbiter().load("ept", index[0], index[-1], "sun", str(tmp_path))
+    # the files of each observer are in its subfolder
+    assert paths == [str(tmp_path / "solo")]
+    assert (tmp_path / "solo").is_dir()
     assert list(data) == ["protons", "electrons"]
     assert data["protons"].flux.columns.tolist() == [0, 1, 2]
     assert data["protons"].flux[2].tolist() == epd_like_data(index, "ept")[0][("Ion_Flux", "Ion_Flux_2")].tolist()
