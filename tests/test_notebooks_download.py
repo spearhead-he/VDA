@@ -1,5 +1,8 @@
 """Download of the notebooks and their example files (spearhead-vda-notebooks), without the network"""
 import io
+import json
+import re
+from pathlib import Path
 from urllib.error import HTTPError
 
 import pytest
@@ -74,3 +77,14 @@ def test_command_error(monkeypatch, tmp_path, capsys):
         notebooks.main([str(tmp_path), "--version", "9.9.9"])
     assert e.value.code == 1
     assert "Error: vda_multi_event.ipynb of version 9.9.9 not found" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("notebook", [f for f in notebooks.FILES if f.endswith(".ipynb")])
+def test_notebook_links_work_in_the_downloaded_folder(notebook):
+    # the downloaded folder has only the notebooks and the example files: other links go to GitHub
+    cells = json.loads((Path(__file__).parents[1] / notebook).read_text())["cells"]
+    text = "".join("".join(cell["source"]) for cell in cells if cell["cell_type"] == "markdown")
+    targets = [target.split("#")[0] for target in re.findall(r"\]\(([^)]+)\)", text)]
+    assert targets
+    relative = [target for target in targets if not target.startswith(("https://", "http://")) and target]
+    assert [target for target in relative if target not in notebooks.FILES] == []

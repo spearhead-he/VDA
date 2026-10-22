@@ -30,7 +30,7 @@ from pyonset import onset_determination
 from sunpy.coordinates import get_earth
 
 from .conf import DEFAULT_DATA_PATH, check_resample_frequency
-from .observers import OBSERVERS
+from .observers import OBSERVERS, quiet_loader
 
 # Rest mass energy of the particles, in MeV
 M_REST = {"protons": 938.27, "electrons": 0.511}
@@ -55,6 +55,31 @@ def check_file_exists(filepath: str, description: str) -> None:
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"{description} not found: {filepath} (a relative path is relative to the current "
                                 f"folder, {os.getcwd()})")
+
+
+def check_comma_separated(filepath: str) -> None:
+    """Raises ValueError if the columns of the header of the .csv file are separated by ";" or tabs instead of commas"""
+    with open(filepath, encoding="utf-8-sig") as f:
+        header = next((line for line in f if line.strip()), "")
+    separator = next((s for s in (";", "\t") if s in header), None)
+    if "," not in header and separator:
+        name = "tabs" if separator == "\t" else f"'{separator}'"
+        raise ValueError(f"The columns of {filepath} are separated by {name}: separate them with commas (e.g. save the "
+                         "file as CSV with commas)")
+
+
+# Largest distance of an observer from the Sun, in AU: beyond Saturn, so that a distance in km or m is caught
+MAX_DISTANCE = 10
+
+
+def check_distance(distance: float,
+                   description: str) -> float:
+    """The distance (AU) of an observer from the Sun, as a float. Raises ValueError, with the description (e.g. "Distance
+    of group 'SOHO'"), if it is not above 0 and at most MAX_DISTANCE"""
+    if not 0 < distance <= MAX_DISTANCE:
+        raise ValueError(f"{description}: {distance:g} AU. Give the distance from the Sun in AU (e.g. 0.98), above 0 "
+                         f"and at most {MAX_DISTANCE}")
+    return float(distance)
 
 
 def to_datetimes(column: pd.Series, filepath: str) -> pd.Series:
@@ -85,6 +110,12 @@ def fit_warnings(a: float,
     return []
 
 
+# Columns of the VDA results: the release time at the Sun, when its light reaches 1 AU and the observer ("Release
+# Time"), the error of the release times, the light travel time from the Sun to the observer, and the APL in AU
+RESULTS_COLUMNS = ["Release Time (Sun)", "Release Time (1 AU)", "Release Time", "Release Time Error", "Extra Time", "APL",
+                   "APL Error"]
+
+
 def fit_vda(inv_betas: np.ndarray,
             onset_seconds: np.ndarray,
             t0: datetime,
@@ -92,12 +123,13 @@ def fit_vda(inv_betas: np.ndarray,
             name: str | None = None) -> tuple:
     """Fits the VDA line of the points: onset_seconds (seconds after t0) against inv_betas.
 
-    t_sun_to_observer is the light travel time from the Sun to the observer (seconds). The release time is the time at
-    the Sun (the fit at inverse beta 0) plus this light travel time (the extra time), for comparison with
-    observations at the observer. Returns the results (release time, extra time, APL in AU and their errors) and the
-    fit (line t = a * inverse beta + b, with the error of b, and the warnings of fit_warnings). The APL is the path
-    length L = a * c of the slope a. With 2 points the line goes through both, and the errors are NaN. name (e.g.
-    "event 1") is no longer used, the warnings are returned.
+    t_sun_to_observer is the light travel time from the Sun to the observer (seconds). The release time at the Sun is
+    the fit at inverse beta 0; "Release Time (1 AU)" and "Release Time" add the light travel time to 1 AU and to the
+    observer (the extra time), for comparison with observations at Earth and at the observer. Returns the results
+    (columns RESULTS_COLUMNS: release times, extra time, APL in AU and their errors) and the fit (line
+    t = a * inverse beta + b, with the error of b, and the warnings of fit_warnings). The APL is the path length
+    L = a * c of the slope a. With 2 points the line goes through both, and the errors are NaN. name (e.g. "event 1")
+    is no longer used, the warnings are returned.
     """
     if len(inv_betas) > 2:
         p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
@@ -108,8 +140,12 @@ def fit_vda(inv_betas: np.ndarray,
         a, b = np.polyfit(inv_betas, onset_seconds, 1)
         a_error = np.nan
         b_error = np.nan
+    at_sun, at_au = release_times({"t0": t0, "b": b})
+    time_format = "%Y-%m-%d %H:%M:%S"
     results = {
-        "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
+        "Release Time (Sun)": at_sun.strftime(time_format),
+        "Release Time (1 AU)": at_au.strftime(time_format),
+        "Release Time": _light_time_later(at_sun, t_sun_to_observer).strftime(time_format),
         "Release Time Error": pd.NaT if np.isnan(b_error) else timedelta(seconds=b_error),
         "Extra Time": timedelta(seconds=t_sun_to_observer),
         "APL": a / AU_LIGHT_SECONDS,
@@ -141,11 +177,18 @@ def format_release_time(res: pd.Series, time_format: str = "%Y-%m-%d %H:%M:%S") 
             f"± {format_timedelta(res['Release Time Error'])}")
 
 
+def _light_time_later(time: pd.Timestamp,
+                      seconds: float) -> pd.Timestamp:
+    """The time plus the seconds, to the microsecond: the times are shown truncated to the second, and a fit through
+    3:00:00 may give 2:59:59.9999999"""
+    return (time + pd.Timedelta(seconds=seconds)).round("us")
+
+
 def release_times(fit: dict) -> tuple[pd.Timestamp, pd.Timestamp]:
     """Release time at the Sun of a VDA fit (in VDA.vda_fits), where the fit line meets inverse beta 0, and the time
     its light reaches 1 AU, for comparison with observations at Earth"""
-    at_sun = pd.Timestamp(fit["t0"]) + pd.Timedelta(seconds=fit["b"])
-    return at_sun, at_sun + pd.Timedelta(seconds=AU_LIGHT_SECONDS)
+    at_sun = _light_time_later(pd.Timestamp(fit["t0"]), fit["b"])
+    return at_sun, _light_time_later(at_sun, AU_LIGHT_SECONDS)
 
 
 class ReferenceTime(NamedTuple):
@@ -161,28 +204,38 @@ class ReferenceTime(NamedTuple):
 EARTH = "earth"
 
 
+def observer_name(observer: str) -> str:
+    """The name of the observer of a reference time ("earth" or a name of OBSERVERS), from its name or label in any
+    case (e.g. "sta", "STEREO-A" or "Stereo-A")"""
+    names = {EARTH: EARTH, "Earth".lower(): EARTH}
+    for name, o in OBSERVERS.items():
+        names[name.lower()] = name
+        names[o.label.lower()] = name
+    try:
+        return names[observer.strip().lower()]
+    except KeyError:
+        choices = ", ".join([f"{EARTH!r}"] + [f"{name!r} ({o.label})" for name, o in OBSERVERS.items()])
+        raise ValueError(f"Unknown observer {observer!r}: use {choices}, or a distance in AU") from None
+
+
 def observer_distance(observer: str | float,
                       time: pd.Timestamp) -> float:
-    """Distance from the Sun (AU) at the time of the observer of a reference time: "earth", a name of OBSERVERS (e.g.
-    "sta"), or a distance in AU"""
+    """Distance from the Sun (AU) at the time of the observer of a reference time: "earth", a name or label of
+    OBSERVERS (e.g. "sta" or "STEREO-A"), or a distance in AU"""
     if isinstance(observer, (int, float)):
-        if observer <= 0:
-            raise ValueError(f"Invalid distance of the observer: {observer} AU. It must be positive")
-        return float(observer)
-    if observer == EARTH:
+        return check_distance(observer, "Invalid distance of the observer")
+    name = observer_name(observer)
+    if name == EARTH:
         return get_earth(time).radius.to(u.AU).value
-    if observer not in OBSERVERS:
-        raise ValueError(f"Unknown observer {observer!r}: use {EARTH!r}, one of {', '.join(map(repr, OBSERVERS))}, "
-                         "or a distance in AU")
-    OBSERVERS[observer].initialize_position()
-    return OBSERVERS[observer].distance(time).to(u.AU).value
+    OBSERVERS[name].initialize_position()
+    return OBSERVERS[name].distance(time).to(u.AU).value
 
 
 def reference_time_at_sun(reference: tuple) -> ReferenceTime:
     """The reference time at the Sun: the observed time minus the light travel time from the Sun to its observer.
 
     reference: (label, datetime) observed at Earth, or (label, datetime, observer), with the observer as in
-    observer_distance ("earth", a name of OBSERVERS, or a distance in AU).
+    observer_distance ("earth", a name or label of OBSERVERS, or a distance in AU).
     """
     label, time, *observer = reference
     observer = observer[0] if observer else EARTH
@@ -191,21 +244,31 @@ def reference_time_at_sun(reference: tuple) -> ReferenceTime:
     if isinstance(observer, (int, float)):
         text = f"{distance:.2f} AU"
     else:
-        text = "Earth" if observer == EARTH else OBSERVERS[observer].label
+        text = "Earth" if observer_name(observer) == EARTH else OBSERVERS[observer_name(observer)].label
     return ReferenceTime(label, observed, text, observed - pd.Timedelta(seconds=distance * AU_LIGHT_SECONDS))
 
 
 def print_fit_results(label: str,
                       res: pd.Series,
-                      warnings: list[str] = ()) -> None:
-    """Prints the results of a VDA fit (a row of VDA.results) under the label, with the warnings of the fit"""
+                      warnings: list[str] = (),
+                      observer: str = "observer") -> None:
+    """Prints the results of a VDA fit (a row of VDA.results) under the label, with the warnings of the fit.
+
+    The release time at the Sun and its error come first, followed by the times its light reaches 1 AU and the
+    observer (e.g. "spacecraft"), for comparison with observations at Earth and at the observer.
+    """
     print(label)
     if pd.isna(res.get("APL")):
         print("    No results (not enough onset points: they are needed at two different energies at least)\n")
         return
-    print(f"    Release Time : {format_release_time(res)}")
-    print(f"    Extra Time   : {format_timedelta(res['Extra Time'])} (light travel time from the Sun)")
-    print(f"    APL          : {res['APL']:.2f} ± {format_error(res['APL Error'])} AU")
+    at_observer = f"At the {observer}"
+    width = max(len("Release at the Sun"), len(at_observer))
+    error = format_timedelta(res["Release Time Error"])
+    print(f"    {'Release at the Sun':<{width}} : {res['Release Time (Sun)']} ± {error}")
+    print(f"    {'At 1 AU':<{width}} : {res['Release Time (1 AU)']}")
+    print(f"    {at_observer:<{width}} : {res['Release Time']} "
+          f"(+{format_timedelta(res['Extra Time'])} light travel time from the Sun)")
+    print(f"    {'APL':<{width}} : {res['APL']:.2f} ± {format_error(res['APL Error'])} AU")
     for warning in warnings:
         print(f"    Warning: {warning}")
     print()
@@ -215,13 +278,7 @@ class VDA:
 
     def __init__(self, parameters):
         self.parameters = parameters
-        self.results = pd.DataFrame({
-            "Release Time": [],
-            "Release Time Error": [],
-            "Extra Time": [],
-            "APL": [],
-            "APL Error": []
-        })
+        self.results = pd.DataFrame(columns=RESULTS_COLUMNS)
 
     ############### Reference Times DF ###############
     EVENT_INDEX_NAME = "Event No"
@@ -265,7 +322,8 @@ class VDA:
 
     def _load_observer_data(self, sensor, startdate, enddate, viewing, particles) -> dict:
         """Data of the particles of the sensor, with the channel column names of the data"""
-        data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH, particles=list(particles))
+        with quiet_loader():
+            data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH, particles=list(particles))
         return {
             particle: (
                 particle_data.flux.rename(columns=lambda c: self._channel_column(particle, c)),
@@ -286,6 +344,7 @@ class VDA:
     def times_file_type(self, filepath: str) -> str:
         """Returns "reference times" or "datetime ranges", deduced from the columns of the events file"""
         check_file_exists(filepath, "Events file")
+        check_comma_separated(filepath)
         columns = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True, nrows=0).columns.str.strip()
         self._check_times_file_columns(filepath, columns)
         return "reference times" if self.REF_TIME_COLNAME in columns else "datetime ranges"
@@ -293,6 +352,7 @@ class VDA:
     def _read_times_file(self, filepath: str) -> pd.DataFrame:
         """Reads the events file. Its type (datetime ranges or reference times) is deduced from its columns"""
         check_file_exists(filepath, "Events file")
+        check_comma_separated(filepath)
         df = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True)
         df.columns = df.columns.str.strip()
         df.index.name = self.EVENT_INDEX_NAME
@@ -539,7 +599,8 @@ class VDA:
         keys = []
         for index, row in self.df_times.iterrows():
             if show_progress:
-                print(f"Working on event {index}...")
+                print(f"Event {index}: data from {row[self.START_TIME_COLNAME]:%Y-%m-%d %H:%M} to "
+                      f"{row[self.END_TIME_COLNAME]:%Y-%m-%d %H:%M}, downloaded if they are not in the data folder")
             df_row = pd.DataFrame({})
             keys.append(index)
             for sensor, particles in self.parameters.sensors_particles.items():
@@ -570,8 +631,6 @@ class VDA:
                         df_row = pd.concat([df_row, df_particle], axis="columns", sort=True)
             df_rows.append(df_row)
 
-        if show_progress:
-            print(f"Done")
         return pd.concat(df_rows, keys=keys, names=[self.EVENT_INDEX_NAME, "Time"])
 
     def _use_saved_resample_frequency(self) -> None:
@@ -954,7 +1013,7 @@ class VDA:
             time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
             print_fit_results(f"Event {index_event} ({time_start} to {time_end}) | {self.observer.label}",
                               self.results.loc[index_event],
-                              self.vda_fits.get(index_event, {}).get("warnings", []))
+                              self.vda_fits.get(index_event, {}).get("warnings", []), "spacecraft")
 
     def compute_vda(self):
         """Fits the VDA line of each event and stores the results in self.results.
@@ -1035,9 +1094,9 @@ class CustomPointsVDA:
                  distance: float,
                  name: str = "the points") -> None:
         self.points = points
-        self.distance = distance
+        self.distance = check_distance(distance, "Invalid distance")
         self.name = name
-        self.results = pd.DataFrame(columns=["Release Time", "Release Time Error", "Extra Time", "APL", "APL Error"])
+        self.results = pd.DataFrame(columns=RESULTS_COLUMNS)
         self.vda_fits = {}
 
     def compute_vda(self) -> None:
@@ -1122,6 +1181,7 @@ def read_points_file(filepath: str) -> dict:
     Returns {group: CustomPointsVDA}, in the order of the file.
     """
     check_file_exists(filepath, "Points file")
+    check_comma_separated(filepath)
     df = pd.read_csv(filepath, skipinitialspace=True, dtype=str)
     df.columns = df.columns.str.strip()
     required = [c for c in POINTS_FILE_COLUMNS if c != "Group"]
@@ -1138,7 +1198,7 @@ def read_points_file(filepath: str) -> dict:
             raise ValueError(f"Group {group!r} of {filepath}: give one distance (AU) for all its points")
         try:
             points = points_df(zip(df_group["Onset Time"], df_group["Energy"], df_group["Particle"]))
+            groups[group] = CustomPointsVDA(points, float(distances[0]), name=f"group {group}")
         except ValueError as e:
             raise ValueError(f"Group {group!r} of {filepath}: {e}") from None
-        groups[group] = CustomPointsVDA(points, float(distances[0]), name=f"group {group}")
     return groups

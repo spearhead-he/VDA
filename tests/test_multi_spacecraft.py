@@ -198,10 +198,11 @@ def test_run_vda(displayed, monkeypatch, tmp_path, capsys):
     assert tool.run_onsets() is None
     tool.run_vda()
     out = capsys.readouterr().out
-    assert "Solar Orbiter\n    Release Time :" in out and "STEREO-A\n    Release Time :" in out
+    assert "Solar Orbiter\n    Release at the Sun : " in out and "STEREO-A\n    Release at the Sun : " in out
+    assert "\n    At the spacecraft  : " in out
     assert list(tool.results.index) == ["Solar Orbiter", "STEREO-A"]
     assert tool.results.index.name == "Spacecraft"
-    assert list(tool.results.columns) == ["Release Time", "Release Time Error", "Extra Time", "APL", "APL Error"]
+    assert list(tool.results.columns) == analysis.RESULTS_COLUMNS
     # only the combined plot, saved
     assert [type(o).__name__ for o in displayed] == ["Image"]
     assert [f.name for f in tmp_path.glob("*.png")] == ["2021-10-28_1400_2021-10-28_2000_solo-sta.png"]
