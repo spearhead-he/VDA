@@ -5,18 +5,24 @@ format, and gives its distance from the Sun for the light travel time:
 - load(): flux of each particle with the channel numbers as columns, and the energy bins of the channels
 - distance(): Sun-observer distance at a given time, after initialize_position()
 
+quiet_loader() hides the messages and progress bars of the loaders.
+
 Sensors without viewings have the single viewing "omni".
 
 OBSERVERS holds the available observers by name, the values of VDA_parameters.observer.
 """
+import io
 import os
 import re
 import shutil
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from functools import partial
 from typing import NamedTuple
 from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
+import pooch.downloaders as pooch_downloaders
 from seppy.loader.bepi import bepi_sixsp_l3_loader
 from seppy.loader.psp import psp_isois_load
 from seppy.loader.soho import soho_load
@@ -61,6 +67,42 @@ def download_once(urls: list[str], description: str) -> list:
     if any(_cache_storage.find_by_key("url", url) is None for url in urls):
         print(f"Downloading the {description} (only once)")
     return [_cache.download(url) for url in urls]
+
+
+# Lines of the progress bars of the downloads (tqdm, parfive), e.g. "file.cdf: 975kB [00:01, 843kB/s]"
+_PROGRESS_LINE = re.compile(r"B/s\]|it/s\]|\d+%\|")
+
+
+@contextmanager
+def quiet_loader():
+    """Hides the messages and progress bars of the loaders (seppy, solo-epd-loader and their downloads).
+
+    They report e.g. each file downloaded, or data that are missing, which the analysis reports in its own words. If
+    the loader fails, its messages (without the progress bars) are added as a note to the exception, shown with its
+    traceback.
+    """
+    output = io.StringIO()
+    hide_progress = os.environ.get("PARFIVE_HIDE_PROGRESS")
+    os.environ["PARFIVE_HIDE_PROGRESS"] = "1"
+    # the progress bars of pooch are widgets in Jupyter, not printed: tqdm reads its environment variables only when
+    # imported, so they are disabled here
+    pooch_tqdm = pooch_downloaders.tqdm
+    pooch_downloaders.tqdm = partial(pooch_tqdm, disable=True) if pooch_tqdm else None
+    try:
+        with redirect_stdout(output), redirect_stderr(output):
+            yield
+    except Exception as e:
+        lines = [line for line in re.split(r"[\r\n]+", output.getvalue())
+                 if line.strip() and not _PROGRESS_LINE.search(line)]
+        if lines:
+            e.add_note("Messages of the data loader:\n" + "\n".join(lines))
+        raise
+    finally:
+        pooch_downloaders.tqdm = pooch_tqdm
+        if hide_progress is None:
+            del os.environ["PARFIVE_HIDE_PROGRESS"]
+        else:
+            os.environ["PARFIVE_HIDE_PROGRESS"] = hide_progress
 
 
 class ParticleData(NamedTuple):

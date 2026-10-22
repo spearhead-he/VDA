@@ -149,6 +149,16 @@ def test_points_file_without_groups(tmp_path):
      "Group 'A' .*: give one distance"),
     ("Group,Distance,Particle,Energy,Onset Time\nA,0.9,p,10,2024-11-21 18:30\nA,0.9,x,20,2024-11-21 18:20\n",
      "Group 'A' .*: Point 2: Unknown particle 'x'"),
+    # a distance in km
+    ("Group,Distance,Particle,Energy,Onset Time\nA,149597870,p,10,2024-11-21 18:30\n",
+     r"Group 'A' of .*points.csv: Invalid distance: 1.49598e\+08 AU. Give the distance from the Sun in AU \(e.g. 0.98\), "
+     "above 0 and at most 10"),
+    ("Group,Distance,Particle,Energy,Onset Time\nA,0,p,10,2024-11-21 18:30\n", "Group 'A' .*: Invalid distance: 0 AU"),
+    # not comma-separated
+    ("Group;Distance;Particle;Energy;Onset Time\nA;0.9;p;10;2024-11-21 18:30\n",
+     r"The columns of .*points.csv are separated by ';': separate them with commas \(e.g. save the file as CSV with commas\)"),
+    ("Group\tDistance\tParticle\tEnergy\tOnset Time\nA\t0.9\tp\t10\t2024-11-21 18:30\n",
+     "The columns of .*points.csv are separated by tabs"),
 ])
 def test_invalid_points_file(tmp_path, text, message):
     with pytest.raises(ValueError, match=message):
@@ -291,6 +301,7 @@ def test_run_vda_from_the_points_file(displayed, capsys):
     ([{"label": "A", "distance": 1.0, "points": []}, {"label": "A", "distance": 1.0, "points": []}],
      "Group 'A': give each group a different label"),
     ([{"label": " ", "distance": 1.0, "points": []}], "Group '': give each group a different label"),
+    ([{"label": "A", "distance": 20.0, "points": []}], "Group 'A': Invalid distance: 20 AU"),
 ])
 def test_run_vda_invalid_groups(displayed, groups, message):
     tool = VDA_custom_points_notebook()

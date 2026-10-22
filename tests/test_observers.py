@@ -1,6 +1,7 @@
 """Observers (spacecraft): data loading, viewings and default grouped channels"""
 import io
 import logging
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -362,3 +363,29 @@ def test_quiet_downloader_overwrite(monkeypatch, tmp_path):
     assert path.read_bytes() == b"old"
     observers._QuietDownloader().download("https://example.org/a.tls", str(path), overwrite=True)
     assert path.read_bytes() == b"new"
+
+
+def test_quiet_loader_hides_the_loader_output(capsys):
+    hide_progress = observers.os.environ.get("PARFIVE_HIDE_PROGRESS")
+    pooch_tqdm = observers.pooch_downloaders.tqdm
+    with observers.quiet_loader():
+        print("Downloading file.cdf")
+        print("file.cdf: 975kB [00:01, 843kB/s]", file=sys.stderr)
+        # the progress bars of the downloads are disabled
+        assert observers.os.environ["PARFIVE_HIDE_PROGRESS"] == "1"
+        assert observers.pooch_downloaders.tqdm(total=1).disable
+    assert capsys.readouterr() == ("", "")
+    # restored after the loader
+    assert observers.os.environ.get("PARFIVE_HIDE_PROGRESS") == hide_progress
+    assert observers.pooch_downloaders.tqdm is pooch_tqdm
+
+
+def test_quiet_loader_adds_the_loader_messages_to_its_errors(capsys):
+    with pytest.raises(ValueError, match="no data") as error:
+        with observers.quiet_loader():
+            print('Unable to obtain "PSP_ISOIS-EPIHI_L2-HET-RATES60" data!')
+            print("  0%|          | 0.00/1.20M [00:00<?, ?B/s]\r100%|##########| 1.20M/1.20M [00:01, 1.0MB/s]")
+            raise ValueError("no data")
+    # shown with the traceback, without the progress bars
+    assert error.value.__notes__ == ['Messages of the data loader:\nUnable to obtain "PSP_ISOIS-EPIHI_L2-HET-RATES60" data!']
+    assert capsys.readouterr() == ("", "")

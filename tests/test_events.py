@@ -67,6 +67,15 @@ def test_events_file_with_unknown_columns(tmp_path):
         v.construct_times_df()
 
 
+def test_events_file_not_comma_separated(tmp_path):
+    path = write_csv(tmp_path, "events.csv",
+                     "Event No;Start Time;End Time\n"
+                     "1;2021-05-22 19:45;2021-05-23 02:45\n")
+    v = make_vda(input_filepath=path)
+    with pytest.raises(ValueError, match="The columns of .*events.csv are separated by ';': separate them with commas"):
+        v.construct_times_df()
+
+
 def test_background_window_changes(tmp_path):
     path = write_csv(tmp_path, "events.csv",
                      "Event No,Start Time,BG Start,BG End,End Time\n"

@@ -284,9 +284,11 @@ def test_reference_time_at_sun_of_a_distance_and_a_spacecraft(monkeypatch):
 
 
 @pytest.mark.parametrize("observer, message", [
-    (0, "Invalid distance of the observer: 0 AU. It must be positive"),
-    (-1.0, "Invalid distance of the observer: -1.0 AU"),
-    ("goes", "Unknown observer 'goes': use 'earth', one of 'solo', 'sta', 'psp', 'soho', 'wind', 'bepi', or a distance"),
+    (0, r"Invalid distance of the observer: 0 AU. Give the distance from the Sun in AU \(e.g. 0.98\), above 0 and at most 10"),
+    (-1.0, "Invalid distance of the observer: -1 AU"),
+    (1.496e8, "Invalid distance of the observer: 1.496e[+]08 AU"),
+    ("goes", r"Unknown observer 'goes': use 'earth', 'solo' \(Solar Orbiter\), 'sta' \(STEREO-A\), 'psp' \(Parker Solar "
+             r"Probe\), 'soho' \(SOHO\), 'wind' \(Wind\), 'bepi' \(BepiColombo\), or a distance in AU"),
 ])
 def test_reference_time_at_sun_invalid_observer(observer, message):
     with pytest.raises(ValueError, match=message):
@@ -305,3 +307,16 @@ def test_vda_results_at_the_sun_at_1_au_and_at_the_spacecraft(fixed_spacecraft_d
     # the time at the spacecraft adds its light travel time from the Sun
     assert pd.Timestamp(res["Release Time"]) - pd.Timestamp(res["Release Time (Sun)"]) == pytest.approx(
         res["Extra Time"], abs=pd.Timedelta(seconds=1))
+
+
+@pytest.mark.parametrize("observer", ["sta", "STEREO-A", "stereo-a", " Stereo-A "])
+def test_reference_time_observer_by_name_or_label(monkeypatch, observer):
+    monkeypatch.setattr(observers.StereoA, "distance", lambda self, time: 0.96 * u.AU)
+    reference = analysis.reference_time_at_sun(("type III", datetime(2021, 10, 28, 15, 35), observer))
+    assert reference.observer == "STEREO-A"
+    assert (reference.observed - reference.at_sun).total_seconds() == pytest.approx(0.96 * 499.005, abs=1e-3)
+
+
+def test_reference_time_observed_at_earth_by_label():
+    assert analysis.reference_time_at_sun(("SXR", datetime(2021, 10, 28, 15, 35), "Earth")) == \
+        analysis.reference_time_at_sun(("SXR", datetime(2021, 10, 28, 15, 35)))

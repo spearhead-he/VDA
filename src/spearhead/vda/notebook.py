@@ -20,7 +20,7 @@ from pandas.errors import PerformanceWarning
 from sunpy import log as sunpy_log
 
 from . import views
-from .analysis import EARTH, VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, print_fit_results, read_points_file
+from .analysis import EARTH, MAX_DISTANCE, VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, print_fit_results, read_points_file
 from .conf import (DEFAULT_DATA_PATH, ONSET_METHOD_LABELS, RESAMPLE_FREQUENCY_EXAMPLES, OnsetSelection, VDA_parameters,
                    channel_group_label, check_resample_frequency)
 from .observers import OBSERVERS
@@ -171,7 +171,8 @@ class _NotebookBase:
                 wgt_observer = widgets.Dropdown(options=self._REFERENCE_OBSERVERS,
                                                 value=EARTH if is_distance else observer,
                                                 description="Observed from:", style=self._style)
-                wgt_distance = widgets.BoundedFloatText(value=observer if is_distance else 0, min=0, max=100, step=0.01,
+                wgt_distance = widgets.BoundedFloatText(value=observer if is_distance else 0, min=0, max=MAX_DISTANCE,
+                                                        step=0.01,
                                                         description="or distance (AU):", style=self._style,
                                                         layout=widgets.Layout(width="190px"))
                 for wgt in (wgt_observer, wgt_distance):
@@ -1250,7 +1251,7 @@ class VDA_custom_points_notebook(_NotebookBase):
             self._groups_tabs.set_title(i, traitlet["new"])
 
         wgt_label.observe(set_label, names="value")
-        wgt_distance = widgets.BoundedFloatText(value=group["distance"], min=0.01, max=100, step=0.0001,
+        wgt_distance = widgets.BoundedFloatText(value=group["distance"], min=0.01, max=MAX_DISTANCE, step=0.0001,
                                                 description="Distance from the Sun (AU):", style=self._style)
         wgt_distance.observe(lambda traitlet: group.__setitem__("distance", traitlet["new"]), names="value")
         btn_remove_group = widgets.Button(description="Remove Group", tooltip=f"Remove {group['label']}",
@@ -1325,10 +1326,9 @@ class VDA_custom_points_notebook(_NotebookBase):
             if not label or label in vdas:
                 raise ValueError(f"Group {label!r}: give each group a different label")
             try:
-                points = points_df(group["points"])
+                vdas[label] = CustomPointsVDA(points_df(group["points"]), group["distance"], name=f"group {label}")
             except ValueError as e:
                 raise ValueError(f"Group {label!r}: {e}") from None
-            vdas[label] = CustomPointsVDA(points, group["distance"], name=f"group {label}")
         return vdas
 
     def run_vda(self):

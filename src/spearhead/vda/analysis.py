@@ -30,7 +30,7 @@ from pyonset import onset_determination
 from sunpy.coordinates import get_earth
 
 from .conf import DEFAULT_DATA_PATH, check_resample_frequency
-from .observers import OBSERVERS
+from .observers import OBSERVERS, quiet_loader
 
 # Rest mass energy of the particles, in MeV
 M_REST = {"protons": 938.27, "electrons": 0.511}
@@ -55,6 +55,31 @@ def check_file_exists(filepath: str, description: str) -> None:
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"{description} not found: {filepath} (a relative path is relative to the current "
                                 f"folder, {os.getcwd()})")
+
+
+def check_comma_separated(filepath: str) -> None:
+    """Raises ValueError if the columns of the header of the .csv file are separated by ";" or tabs instead of commas"""
+    with open(filepath, encoding="utf-8-sig") as f:
+        header = next((line for line in f if line.strip()), "")
+    separator = next((s for s in (";", "\t") if s in header), None)
+    if "," not in header and separator:
+        name = "tabs" if separator == "\t" else f"'{separator}'"
+        raise ValueError(f"The columns of {filepath} are separated by {name}: separate them with commas (e.g. save the "
+                         "file as CSV with commas)")
+
+
+# Largest distance of an observer from the Sun, in AU: beyond Saturn, so that a distance in km or m is caught
+MAX_DISTANCE = 10
+
+
+def check_distance(distance: float,
+                   description: str) -> float:
+    """The distance (AU) of an observer from the Sun, as a float. Raises ValueError, with the description (e.g. "Distance
+    of group 'SOHO'"), if it is not above 0 and at most MAX_DISTANCE"""
+    if not 0 < distance <= MAX_DISTANCE:
+        raise ValueError(f"{description}: {distance:g} AU. Give the distance from the Sun in AU (e.g. 0.98), above 0 "
+                         f"and at most {MAX_DISTANCE}")
+    return float(distance)
 
 
 def to_datetimes(column: pd.Series, filepath: str) -> pd.Series:
@@ -179,28 +204,38 @@ class ReferenceTime(NamedTuple):
 EARTH = "earth"
 
 
+def observer_name(observer: str) -> str:
+    """The name of the observer of a reference time ("earth" or a name of OBSERVERS), from its name or label in any
+    case (e.g. "sta", "STEREO-A" or "Stereo-A")"""
+    names = {EARTH: EARTH, "Earth".lower(): EARTH}
+    for name, o in OBSERVERS.items():
+        names[name.lower()] = name
+        names[o.label.lower()] = name
+    try:
+        return names[observer.strip().lower()]
+    except KeyError:
+        choices = ", ".join([f"{EARTH!r}"] + [f"{name!r} ({o.label})" for name, o in OBSERVERS.items()])
+        raise ValueError(f"Unknown observer {observer!r}: use {choices}, or a distance in AU") from None
+
+
 def observer_distance(observer: str | float,
                       time: pd.Timestamp) -> float:
-    """Distance from the Sun (AU) at the time of the observer of a reference time: "earth", a name of OBSERVERS (e.g.
-    "sta"), or a distance in AU"""
+    """Distance from the Sun (AU) at the time of the observer of a reference time: "earth", a name or label of
+    OBSERVERS (e.g. "sta" or "STEREO-A"), or a distance in AU"""
     if isinstance(observer, (int, float)):
-        if observer <= 0:
-            raise ValueError(f"Invalid distance of the observer: {observer} AU. It must be positive")
-        return float(observer)
-    if observer == EARTH:
+        return check_distance(observer, "Invalid distance of the observer")
+    name = observer_name(observer)
+    if name == EARTH:
         return get_earth(time).radius.to(u.AU).value
-    if observer not in OBSERVERS:
-        raise ValueError(f"Unknown observer {observer!r}: use {EARTH!r}, one of {', '.join(map(repr, OBSERVERS))}, "
-                         "or a distance in AU")
-    OBSERVERS[observer].initialize_position()
-    return OBSERVERS[observer].distance(time).to(u.AU).value
+    OBSERVERS[name].initialize_position()
+    return OBSERVERS[name].distance(time).to(u.AU).value
 
 
 def reference_time_at_sun(reference: tuple) -> ReferenceTime:
     """The reference time at the Sun: the observed time minus the light travel time from the Sun to its observer.
 
     reference: (label, datetime) observed at Earth, or (label, datetime, observer), with the observer as in
-    observer_distance ("earth", a name of OBSERVERS, or a distance in AU).
+    observer_distance ("earth", a name or label of OBSERVERS, or a distance in AU).
     """
     label, time, *observer = reference
     observer = observer[0] if observer else EARTH
@@ -209,7 +244,7 @@ def reference_time_at_sun(reference: tuple) -> ReferenceTime:
     if isinstance(observer, (int, float)):
         text = f"{distance:.2f} AU"
     else:
-        text = "Earth" if observer == EARTH else OBSERVERS[observer].label
+        text = "Earth" if observer_name(observer) == EARTH else OBSERVERS[observer_name(observer)].label
     return ReferenceTime(label, observed, text, observed - pd.Timedelta(seconds=distance * AU_LIGHT_SECONDS))
 
 
@@ -287,7 +322,8 @@ class VDA:
 
     def _load_observer_data(self, sensor, startdate, enddate, viewing, particles) -> dict:
         """Data of the particles of the sensor, with the channel column names of the data"""
-        data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH, particles=list(particles))
+        with quiet_loader():
+            data = self.observer.load(sensor, startdate, enddate, viewing, self.DATA_PATH, particles=list(particles))
         return {
             particle: (
                 particle_data.flux.rename(columns=lambda c: self._channel_column(particle, c)),
@@ -308,6 +344,7 @@ class VDA:
     def times_file_type(self, filepath: str) -> str:
         """Returns "reference times" or "datetime ranges", deduced from the columns of the events file"""
         check_file_exists(filepath, "Events file")
+        check_comma_separated(filepath)
         columns = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True, nrows=0).columns.str.strip()
         self._check_times_file_columns(filepath, columns)
         return "reference times" if self.REF_TIME_COLNAME in columns else "datetime ranges"
@@ -315,6 +352,7 @@ class VDA:
     def _read_times_file(self, filepath: str) -> pd.DataFrame:
         """Reads the events file. Its type (datetime ranges or reference times) is deduced from its columns"""
         check_file_exists(filepath, "Events file")
+        check_comma_separated(filepath)
         df = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True)
         df.columns = df.columns.str.strip()
         df.index.name = self.EVENT_INDEX_NAME
@@ -561,7 +599,8 @@ class VDA:
         keys = []
         for index, row in self.df_times.iterrows():
             if show_progress:
-                print(f"Working on event {index}...")
+                print(f"Event {index}: data from {row[self.START_TIME_COLNAME]:%Y-%m-%d %H:%M} to "
+                      f"{row[self.END_TIME_COLNAME]:%Y-%m-%d %H:%M}, downloaded if they are not in the data folder")
             df_row = pd.DataFrame({})
             keys.append(index)
             for sensor, particles in self.parameters.sensors_particles.items():
@@ -592,8 +631,6 @@ class VDA:
                         df_row = pd.concat([df_row, df_particle], axis="columns", sort=True)
             df_rows.append(df_row)
 
-        if show_progress:
-            print(f"Done")
         return pd.concat(df_rows, keys=keys, names=[self.EVENT_INDEX_NAME, "Time"])
 
     def _use_saved_resample_frequency(self) -> None:
@@ -1057,7 +1094,7 @@ class CustomPointsVDA:
                  distance: float,
                  name: str = "the points") -> None:
         self.points = points
-        self.distance = distance
+        self.distance = check_distance(distance, "Invalid distance")
         self.name = name
         self.results = pd.DataFrame(columns=RESULTS_COLUMNS)
         self.vda_fits = {}
@@ -1144,6 +1181,7 @@ def read_points_file(filepath: str) -> dict:
     Returns {group: CustomPointsVDA}, in the order of the file.
     """
     check_file_exists(filepath, "Points file")
+    check_comma_separated(filepath)
     df = pd.read_csv(filepath, skipinitialspace=True, dtype=str)
     df.columns = df.columns.str.strip()
     required = [c for c in POINTS_FILE_COLUMNS if c != "Group"]
@@ -1160,7 +1198,7 @@ def read_points_file(filepath: str) -> dict:
             raise ValueError(f"Group {group!r} of {filepath}: give one distance (AU) for all its points")
         try:
             points = points_df(zip(df_group["Onset Time"], df_group["Energy"], df_group["Particle"]))
+            groups[group] = CustomPointsVDA(points, float(distances[0]), name=f"group {group}")
         except ValueError as e:
             raise ValueError(f"Group {group!r} of {filepath}: {e}") from None
-        groups[group] = CustomPointsVDA(points, float(distances[0]), name=f"group {group}")
     return groups

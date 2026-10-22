@@ -1,4 +1,5 @@
 """Grouping of the energy channels, saved data and the folder of the downloaded data"""
+import sys
 from datetime import datetime
 
 import pandas as pd
@@ -149,3 +150,22 @@ def test_energies_need_update(monkeypatch):
     # another observer
     v.parameters.observer = "sta"
     assert v.energies_need_update()
+
+
+def test_data_messages_without_the_loader_output(monkeypatch, capsys):
+    # the messages and progress bars of the loader are hidden: one line per event
+    def epd_load(**kwargs):
+        print("Creating dir /data/solo/l2/epd/het/")
+        print("solo_L2_epd-het-sun-rates_20211028_V01.cdf: 975kB [00:01, 843kB/s]", file=sys.stderr)
+        return rising_epd_data(**kwargs)
+
+    monkeypatch.setattr(observers, "epd_load", epd_load)
+    v = make_vda(date_ranges=[(datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 15))], resample_frequency="",
+                 viewings=["sun"],
+                 channel_groups={"protons": {"HET/protons Channel 1": {"sensor": "het", "channels": [1, 2]}}})
+    v.construct_times_df()
+    v.construct_energies_df()
+    v.construct_particles_df()
+    out, err = capsys.readouterr()
+    assert out == "Event 1: data from 2021-10-28 14:00 to 2021-10-28 15:00, downloaded if they are not in the data folder\n"
+    assert err == ""
