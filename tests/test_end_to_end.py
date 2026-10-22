@@ -7,7 +7,7 @@ from warnings import simplefilter, filterwarnings
 from pandas.errors import PerformanceWarning
 from astropy.visualization import quantity_support
 
-from tests.helpers import strip_figure_text
+from tests.helpers import legend_texts, strip_figure_text, table_rows
 from spearhead.vda import VDA, VDA_parameters, views
 
 # omit Pandas' PerformanceWarning
@@ -55,14 +55,9 @@ def test_vda_default():
 
     fig = views.plot_vda(vda, 1)
 
-    # check legend contents manually
-    handles, labels = fig.axes[0].get_legend_handles_labels()
-    assert labels == ['Protons',
-                      'Electrons',
-                      'Linear Regression',
-                      'Extra Time = 0:06:40',
-                      'Release Time = 2021-10-28 15:26:11 +/- 0:03:38',
-                      'APL = 1.76 +/- 0.12']
+    # check the legend and the results table manually
+    assert legend_texts(fig.axes[0]) == ['Protons', 'Electrons', 'VDA fit', '2σ band', 'Release at the Sun']
+    assert table_rows(fig)[1] == ['Solar Orbiter', '15:19:30', '15:27:49', '± 0:03:38', '1.42 ± 0.10']
 
     if not _mpl_old:
         # Strip before returning — don't rely solely on remove_text=True

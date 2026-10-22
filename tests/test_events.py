@@ -116,3 +116,36 @@ def test_save_times_round_trip(tmp_path):
     columns = ["Start Time", "BG Start", "BG End", "End Time"]
     pd.testing.assert_frame_equal(saved.df_times[columns], v.df_times[columns], check_dtype=False)
     assert saved.bg_window_source(2) == "input file"
+
+
+def test_events_file_not_found(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    v = make_vda(input_filepath="events.csv")
+    with pytest.raises(FileNotFoundError, match="Events file not found: events.csv .* relative to the current folder"):
+        v.construct_times_df()
+
+
+def test_events_file_with_invalid_datetimes(tmp_path):
+    path = write_csv(tmp_path, "events.csv", "Event No,Start Time,End Time\n"
+                                             "1,2021-10-28 14:00,2021-10-28 20:00\n"
+                                             "2,2021-11-09 15:00,yesterday\n")
+    v = make_vda(input_filepath=path)
+    with pytest.raises(ValueError, match=r"Invalid datetimes in the column End Time of .*events.csv, in the rows "
+                                         r"2 \('yesterday'\)"):
+        v.construct_times_df()
+
+
+def test_events_file_with_empty_background_cells(tmp_path):
+    # empty cells are not invalid datetimes: they use the default background window
+    path = write_csv(tmp_path, "events.csv", "Event No,Start Time,BG Start,BG End,End Time\n"
+                                             "1,2021-10-28 14:00,,,2021-10-28 20:00\n")
+    v = make_vda(input_filepath=path)
+    v.construct_times_df()
+    assert v.bg_window_source(1) == "default"
+
+
+def test_events_file_start_after_end(tmp_path):
+    path = write_csv(tmp_path, "events.csv", "Event No,Start Time,End Time\n1,2021-10-28 20:00,2021-10-28 14:00\n")
+    v = make_vda(input_filepath=path)
+    with pytest.raises(ValueError, match="Event 1 of .*events.csv: the datetime range start .* must be before its end"):
+        v.construct_times_df()

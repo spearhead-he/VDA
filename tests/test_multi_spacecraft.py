@@ -8,9 +8,9 @@ import pandas as pd
 import pytest
 from ipywidgets import widgets
 
-from spearhead.vda import OnsetSelection, VDA, notebook, observers, views
+from spearhead.vda import OnsetSelection, VDA, analysis, notebook, observers, views
 from spearhead.vda.notebook import VDA_multi_spacecraft_notebook
-from tests.helpers import rising_epd_data, rising_observer_load
+from tests.helpers import legend_texts, reference_legend, rising_epd_data, rising_observer_load, table_rows
 from tests.test_notebook import find
 
 START, END = datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 20)
@@ -181,11 +181,11 @@ def test_spacecraft_without_onsets(displayed, capsys):
     tool.run_data()
     capsys.readouterr()
     box = tool.run_onsets()
-    # the name of the spacecraft before its tables
-    assert capsys.readouterr().out == "Solar Orbiter:\n"
+    # the name of the spacecraft before its onsets
+    assert capsys.readouterr().out.startswith("Solar Orbiter:\nEvent 1: no onsets in its 2 grouped channels.")
     assert box.children[1].children[0].value == "No onsets were determined"
     tool.run_vda()
-    assert "Solar Orbiter\n    No results (not enough onset points)" in capsys.readouterr().out
+    assert "Solar Orbiter\n    No results (not enough onset points" in capsys.readouterr().out
     assert pd.isna(tool.results.loc["Solar Orbiter"]).all()
 
 
@@ -237,14 +237,22 @@ def test_plot_vda_combined(vdas):
     assert fig.get_suptitle() == "VDA of 2021-10-28"
     # one fit line per spacecraft, in its color, from inverse beta 0
     lines = ax.get_lines()
-    assert [line.get_label().split(":")[0] for line in lines] == ["Solar Orbiter", "STEREO-A"]
+    assert len(lines) == 2
     assert all(line.get_xdata()[0] == 0 for line in lines)
     assert mcolors.to_hex(lines[0].get_color()) != mcolors.to_hex(lines[1].get_color())
-    assert ", APL " in lines[0].get_label() and "release " in lines[0].get_label()
-    # the spacecraft above the plot, the particles and reference times inside it
-    assert [t.get_text().split(":")[0] for t in ax.get_legend().get_texts()] == ["Solar Orbiter", "STEREO-A"]
-    inner = [a for a in ax.artists if hasattr(a, "get_texts")][0]
-    assert [t.get_text() for t in inner.get_texts()] == ["Protons", "Electrons", "SXR peak"]
+    # the symbols and reference times in the legend, the results of each spacecraft in the table, in its color
+    assert legend_texts(ax) == ["Protons", "Electrons", "VDA fits", "2σ bands", "Release at the Sun"]
+    references = reference_legend(ax)
+    assert references.get_title().get_text() == ""
+    assert [t.get_text() for t in references.get_texts()] == ["SXR peak: 15:41:44 (15:50:00 at Earth)"]
+    # the legends inside the plot are a bit smaller than the legend font size
+    assert ax.get_legend().get_texts()[0].get_fontsize() == pytest.approx(0.9 * plt.rcParams["legend.fontsize"])
+    assert references.get_texts()[0].get_fontsize() == ax.get_legend().get_texts()[0].get_fontsize()
+    rows = table_rows(fig)
+    assert rows[0] == ["", "Release at the Sun", "At 1 AU", "Error", "APL (AU)"]
+    assert [row[0] for row in rows[1:]] == ["Solar Orbiter", "STEREO-A"]
+    label_colors = [mcolors.to_hex(fig.axes[1].tables[0][row, 0].get_text().get_color()) for row in (1, 2)]
+    assert label_colors == [mcolors.to_hex(line.get_color()) for line in lines]
     assert ax.get_xlim()[0] == 0
     # the points of each spacecraft in its color
     points = [c for c in ax.collections if len(c.get_offsets()) and c.get_label() != "SXR peak"
@@ -256,9 +264,9 @@ def test_plot_vda_combined_without_fit(vdas):
     # a spacecraft without a fit of the event is left out
     vdas["SOHO"] = VDA(vdas["STEREO-A"].parameters)
     fig = views.plot_vda_combined(vdas, 1)
-    assert [line.get_label().split(":")[0] for line in fig.axes[0].get_lines()] == ["Solar Orbiter", "STEREO-A"]
+    assert [row[0] for row in table_rows(fig)[1:]] == ["Solar Orbiter", "STEREO-A"]
     fig = views.plot_vda_combined({"SOHO": vdas["SOHO"]}, 1)
-    assert fig.axes[0].get_lines() == [] and fig.get_suptitle() == ""
+    assert fig.axes[0].get_lines() == [] and fig.get_suptitle() == "" and len(fig.axes[1].tables) == 0
 
 
 def test_vda_combined_plot_filename(vdas, tmp_path):
@@ -266,3 +274,12 @@ def test_vda_combined_plot_filename(vdas, tmp_path):
     views.plot_vda_combined(vdas, 1, filename=tmp_path / "combined.png")
     assert (tmp_path / "combined.png").stat().st_size > 0
     assert pd.notna(vdas["STEREO-A"].results.loc[1, "APL"])
+
+
+def test_plot_vda_combined_release_times(vdas):
+    ax = views.plot_vda_combined(vdas, 1).axes[0]
+    assert ax.get_ylabel() == "Time (UTC)"
+    # the release time at the Sun, where the fit line meets inverse beta 0, and at 1 AU
+    fig = ax.figure
+    at_sun, at_au = analysis.release_times(vdas["Solar Orbiter"].vda_fits[1])
+    assert table_rows(fig)[1][1:3] == [f"{at_sun:%H:%M:%S}", f"{at_au:%H:%M:%S}"]

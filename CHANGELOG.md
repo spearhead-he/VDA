@@ -4,6 +4,36 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Added
+- The printed release time shows the light travel time from the Sun that it includes, e.g. `2021-10-28 15:26:11 (+0:06:40) ± 0:03:38`: the release time at the Sun is 15:19:30. The user guide explains the release times, their error and the band of the plot (see [Results](docs/user_guide.md#results)).
+- `analysis.release_times(fit)`: the release time at the Sun of a VDA fit, where its line meets inverse beta 0, and the time its light reaches 1 AU.
+- The observer of each reference time: Earth (the default), one of the spacecraft of the tool, or its distance from the Sun in AU, which is used instead of the observer ("Observed from" and "or distance (AU)" in the Views/Plots tab; `(label, datetime, observer)` in scripts, e.g. `("type III", datetime(2021, 10, 28, 15, 27), "sta")` or `0.8`). The reference times are shown at the Sun, minus the light travel time from the Sun to their observer at that time, and their legend, in the lower right corner of the plot, gives the time at the Sun and the observed time of each, e.g. `SXR peak: 15:18:44 (15:27:00 at Earth)` (`analysis.reference_time_at_sun`).
+- Warnings with the results of a VDA fit that is not physical: an APL that is not positive, or a release at the Sun after the earliest onset (`analysis.fit_warnings`, in `vda.vda_fits[event_no]["warnings"]`).
+- The Onsets step prints the number of grouped channels of each event with an onset, e.g. `Event 1: onsets in 8 of 10 grouped channels`, or that an event has no onsets (`vda.onset_counts()`, `vda.print_onset_counts()`).
+- Clear error messages, before the data are downloaded where possible, for: a step run before the previous one (e.g. "Run the data step (tool.run_data()) first"), an events, points or data file that is not found, invalid datetimes in an events file (with their rows), an events file with a start after the end, a grouped channel without channels or no grouped channels, and an invalid resample frequency, also shown in red in the form.
+- The parameters form says when it reads the energy ranges of the channels from the data of the first event, which may be downloaded.
+
+### Changed
+- VDA plots: a legend of the symbols in the upper left corner of the plot, and a table of the results under it, with a row per fit: the release time at the Sun, the time its light reaches 1 AU (for comparison with observations at Earth), their error and the APL. Every fit line and its band start at inverse beta 0, where an open circle marks the release time at the Sun, also without reference times. The results were in the legends above the plots.
+- The intermediate tables are not displayed by default (parameter `view_dfs` is `False`): they are shown with "Display the produced DataFrames" in the Views/Plots tab, or `tool.parameters.view_dfs = True`.
+- A VDA fit of two onset points has no errors (`n/a`, NaN in the results) instead of errors of 0, and no band in the plot. A fit needs onsets at two different energies: onsets of one energy give no results instead of a fit of a vertical line.
+- `vda.compute_vda()` gives results for every event (NaN without enough onset points, instead of no row for an event without onsets), and no longer keeps the results of the events of a previous run. The message of the events without enough onset points is printed with the results.
+- The Solar Orbiter SPICE kernels are downloaded once, with one message and without progress bars, instead of again every 10 days. The tracebacks "Exception ignored ... signal only works in main thread" of their download in Jupyter, and the log of spiceypy when the tool is imported, are no longer shown.
+- Labels: the parameters of the onset methods (e.g. "s: threshold in standard deviations above the background mean"), the time axis of the VDA plots ("Time (UTC)"), and the title of the onset plot (e.g. "HET protons"). The onset plot notes a zero background, whose levels cannot be shown in log scale.
+
+### Fixed
+- The apparent path length (APL) is in AU: the path length $L = a \cdot c$ of the slope $a$ of the VDA fit. It was the path length divided by the distance of the observer from the Sun, too large by the factor 1 / distance (e.g. 1.76 instead of 1.42 AU for Solar Orbiter at 0.80 AU in the default event). The unit is shown in the printed results and the VDA plots.
+- The energy ranges of the channels are read again in the Data step when the events or the spacecraft were changed after the parameters form was shown (e.g. an events file typed in the form). The energy ranges of the default event were used, which differ for SOHO EPHIN events before October 2017 and for Wind.
+
+### Upgrading from 1.1.0
+- Update the installation: `pip install --upgrade "spearhead-vda[notebook]"` (from PyPI), or update the files of the tool for an installation from its folder. The dependencies are unchanged.
+- The notebooks of the new version are downloaded with `spearhead-vda-notebooks --overwrite [folder]`; notebooks of 1.1.0 keep working.
+- To see the intermediate tables as before, tick "Display the produced DataFrames" in the Views/Plots tab.
+- The results are unchanged, except for SOHO EPHIN events before October 2017 and Wind events analysed with an events file or events changed after the form was shown (now with the energy ranges of their first event), and for fits of two points (errors `n/a` instead of 0).
+- The APL of every analysis changes, except for an observer at 1 AU: multiply a previous APL by the distance of the observer from the Sun (AU) to compare. The release times are unchanged.
+- Reference times are now entered as observed: a `(label, datetime)` reference time is observed at Earth, and is shown about 8 minutes earlier than before, at the Sun. Give the observer of the others, or their distance from the Sun.
+- `analysis.fit_vda` returns the warnings of the fit in its second value, and no longer prints a message for two points.
+
 ## [1.1.0] - 2026-10-17
 
 ### Added

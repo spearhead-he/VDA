@@ -20,13 +20,13 @@ The tests are in `tests/`, one file per part of the tool:
 
 | File | Tests |
 |---|---|
-| `test_onsets.py` | Onset determination: Sigma threshold and Poisson-CUSUM |
-| `test_events.py` | Events input (files and datetime ranges) and background windows |
-| `test_data.py` | Grouping of the energy channels, saved data and the folder of the downloaded data |
-| `test_observers.py` | Observers (spacecraft): data loading, viewings and default grouped channels |
+| `test_onsets.py` | Onset determination: Sigma threshold and Poisson-CUSUM, and the number of channels with onsets |
+| `test_events.py` | Events input (files and datetime ranges, and their errors) and background windows |
+| `test_data.py` | Grouping of the energy channels, the checks before the download, saved data, the folder of the downloaded data, and when the energy ranges are read again |
+| `test_observers.py` | Observers (spacecraft): data loading, viewings, default grouped channels, and the download of the SPICE kernels |
 | `test_onset_selection.py` | Onset selection |
-| `test_vda_fit.py` | VDA fit and plot |
-| `test_views.py` | Plots of the background window and of the detected onsets, and their files |
+| `test_vda_fit.py` | VDA fit and plot: release times at the Sun and at 1 AU, errors, warnings, the printed results and the order of the steps |
+| `test_views.py` | Plots of the background window, of the detected onsets (also with a zero background) and of the VDA fit, and their files |
 | `test_parameters.py` | Parameters |
 | `test_notebook.py` | Notebook interface: the widgets of the parameters form, the background window and onset selection, and the steps of the analysis |
 | `test_multi_spacecraft.py` | Multi-spacecraft notebook: the parameters form, the analysis of each spacecraft and the combined VDA plot |

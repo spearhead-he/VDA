@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from spearhead.vda import observers, views
-from tests.helpers import make_vda, rising_epd_data
+from spearhead.vda import analysis, observers, views
+from tests.helpers import legend_texts, make_vda, rising_epd_data, table_rows
 
 START, END = datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 20)
 # the rise of the synthetic data, two hours after the start
@@ -116,7 +116,7 @@ def test_plot_onsets_sigma(vda_onsets):
     assert not ax_north.get_lines()
     # one legend for all the viewings
     assert legend_labels(ax_legend) == ["Data", "BG sample", "BG level", "Threshold", "Onset"]
-    assert fig.get_suptitle() == "Detected onsets for event 1 (2021-10-28) | het/protons (2.00-8.00 MeV)"
+    assert fig.get_suptitle() == "Detected onsets for event 1 (2021-10-28) | HET protons (2.00-8.00 MeV)"
 
 
 def test_plot_onsets_poisson_cusum(vda_onsets):
@@ -167,3 +167,32 @@ def test_vda_plot_filename(vda_onsets, resample_frequency, suffix):
     v = vda_onsets()
     v.parameters.resample_frequency = resample_frequency
     assert views.vda_plot_filename(v, 1) == f"2021-10-28_1400_2021-10-28_2000_het-protons_het-electrons_{suffix}.png"
+
+
+def test_plot_onsets_with_zero_background(vda_onsets):
+    # without counts in the background, the levels cannot be shown in log scale: a note explains the onset
+    v = vda_onsets(viewings=("sun",))
+    key = (1, "het", "protons", "sun", "H_Flux", "HET/protons Channel 1")
+    v.df_onsets_existing.at[key, "Method Specific"] = {"bg_level": 0.0, "threshold": 0.0}
+    ax = onset_figure(v).axes[0]
+    assert not [line for line in ax.get_lines() if line.get_label() in ("BG level", "Threshold")]
+    box = [t.get_text() for t in ax.texts][0]
+    assert "BG 0\nThreshold 0\nZero background (no counts):\nany counts are above it" in box
+
+
+def test_plot_vda_labels(vda_onsets, monkeypatch):
+    monkeypatch.setattr(observers.SolarOrbiter, "distance", lambda self, time: 0.8 * u.AU)
+    v = vda_onsets()
+    v.construct_options_df()
+    v.select_onsets()
+    v.construct_energy_channels_characteristics()
+    v.compute_vda()
+    fig = views.plot_vda(v, 1)
+    ax = fig.axes[0]
+    assert ax.get_ylabel() == "Time (UTC)"
+    # two points: no error, and no band of the fit
+    assert legend_texts(ax) == ["Protons", "Electrons", "VDA fit", "Release at the Sun"]
+    at_sun, at_au = analysis.release_times(v.vda_fits[1])
+    assert table_rows(fig) == [["", "Release at the Sun", "At 1 AU", "Error", "APL (AU)"],
+                               ["Solar Orbiter", f"{at_sun:%H:%M:%S}", f"{at_au:%H:%M:%S}", "± n/a",
+                                f"{v.results.loc[1, 'APL']:.2f} ± n/a"]]

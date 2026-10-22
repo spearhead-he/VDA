@@ -58,7 +58,6 @@ parameters.channel_groups = {
         "HET electrons 2": {"sensor": "het", "channels": [2, 3]},
     },
 }
-parameters.view_dfs = False
 
 vda = VDA(parameters)
 vda.construct_times_df()                # events and background windows
@@ -68,12 +67,13 @@ vda.group_energy_channels()
 vda.set_bg_window(2, "2021-11-09 15:30", "2021-11-09 16:30")   # optional: background of one event
 vda.calculate_onsets()
 vda.clean_onsets()
+vda.print_onset_counts()                # optional: grouped channels with onsets in each event
 vda.construct_options_df()
 vda.select_onsets()                     # "Use all" onset selection
 vda.construct_energy_channels_characteristics()
 vda.define_spacecraft_parameters()      # distance of the observer from the Sun (e.g. SPICE kernels for Solar Orbiter)
 vda.compute_vda()                       # VDA fit of every event, without plots
-vda.print_results()
+vda.print_results()                     # with the warnings of the fits (vda.vda_fits[event_no]["warnings"])
 print(vda.results)
 
 fig = views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
@@ -87,8 +87,8 @@ The functions of `spearhead.vda.views` return a matplotlib figure without showin
 |---|---|
 | `plot_bg(vda, event_no)` | Grouped channels of the event with its background window |
 | `plot_onsets(vda, event_no, sensor, particle, prefix, channel, selected_viewing=None)` | Detected onsets of a grouped channel, one subplot per viewing |
-| `plot_vda(vda, event_no, references=None)` | VDA fit of the event (after `vda.compute_vda()`), with the proton points as circles and the electron points as stars. `references` is an optional list of (label, datetime) reference times (e.g. `[("SXR peak", datetime(2021, 10, 28, 15, 35))]`), shown at inverse beta 0 with the fit line extended to it |
-| `plot_vda_combined(vdas, event_no=1, references=None, title=None)` | VDA fits of the same event from several spacecraft or groups of custom points (after `vda.compute_vda()` of each), with `vdas` as `{label: vda}` (e.g. `{"STEREO-A": vda_sta, "SOHO": vda_soho}`): the points and fit of each spacecraft in its color, the fit lines extended to inverse beta 0, and the optional reference times |
+| `plot_vda(vda, event_no, references=None)` | VDA fit of the event (after `vda.compute_vda()`), with the proton points as circles and the electron points as stars. `references` is an optional list of reference times, `(label, datetime)` observed at Earth or `(label, datetime, observer)` with the observer `"earth"`, a name of the observers (e.g. `"sta"`) or its distance from the Sun in AU (e.g. `[("SXR peak", datetime(2021, 10, 28, 15, 35)), ("type III", datetime(2021, 10, 28, 15, 27), "sta")]`). They are shown at inverse beta 0 at the Sun (`analysis.reference_time_at_sun`), with the time at the Sun and the observed time in their legend, in the lower right corner. The fit line and its 2σ band start at inverse beta 0, where an open circle marks the release time at the Sun, and the table under the plot gives the release time at the Sun, the time at 1 AU, their error and the APL |
+| `plot_vda_combined(vdas, event_no=1, references=None, title=None)` | VDA fits of the same event from several spacecraft or groups of custom points (after `vda.compute_vda()` of each), with `vdas` as `{label: vda}` (e.g. `{"STEREO-A": vda_sta, "SOHO": vda_soho}`): the points and fit of each spacecraft in its color, the fit lines extended to inverse beta 0, the optional reference times (as in `plot_vda`), and the results of each spacecraft in the table under the plot |
 
 `vda_plot_filename(vda, event_no)` gives the default filename of the VDA plot, `vda_combined_plot_filename(vdas, event_no=1)` that of the combined plot, and `custom_points_plot_filename(vdas)` that of the plot of custom points. In a notebook, the returned figure is shown by Jupyter; in a script, it is saved with `fig.savefig(...)` or shown with `plt.show()`. Figures that are no longer needed are closed with `plt.close(fig)`.
 
@@ -110,7 +110,7 @@ for vda in vdas.values():
 fig = views.plot_vda_combined(vdas, references=[("SXR peak", "2024-11-21 17:40")])
 ```
 
-The energy of a point is the geometric mean of its range (`analysis.mean_energy`), and its inverse beta is `analysis.inverse_beta(energy, particle)`, as in the VDA of the data. The VDA fit of both is `analysis.fit_vda`.
+The energy of a point is the geometric mean of its range (`analysis.mean_energy`), and its inverse beta is `analysis.inverse_beta(energy, particle)`, as in the VDA of the data. The VDA fit of both is `analysis.fit_vda`, with the warnings of `analysis.fit_warnings`, and `analysis.format_release_time(res)` gives the text of the release time of a row of the results, with the light travel time it includes, `analysis.release_times(fit)` the release time at the Sun of a fit of `vda.vda_fits` and the time at 1 AU, and `analysis.reference_time_at_sun(reference)` the time at the Sun of a reference time, minus the light travel time from the Sun to its observer (see the [user guide](user_guide.md#results)).
 
 ## Widgets in another notebook
 
@@ -140,6 +140,7 @@ tool.onset_selection()        # after vda.select_onsets()
 | `channel_groups` | Grouped channels per particle: `{label: {"sensor": e.g. "het", "channels": [...]}}`. By default, those of the observer (for Solar Orbiter, 8 groups of HET protons and 2 of HET electrons; for STEREO-A, 4 of HET protons and 1 of HET electrons; for Parker Solar Probe, 3 of HET protons and 9 of HET electrons; for SOHO, 2 of ERNE protons and 1 of EPHIN electrons; for Wind, 3 of 3DP protons and 3 of 3DP electrons; for BepiColombo, 3 of SIXS protons and 3 of SIXS electrons) |
 | `onset_method`, `onset_method_parameters` | Onset determination method, `"sigma"` (parameters `s`, `n`) or `"poisson_cusum"` (parameters `cusum_minutes`, `sigma_multiplier`), see the [user guide](user_guide.md#onset-determination). Setting `onset_method` sets its parameters to their defaults |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |
+| `view_dfs` | Display of the intermediate tables in the notebook, and return of the tables by the steps (default `False`) |
 | `load_data_filepath`, `save_data_filepath` | .pkl files to load the data from instead of downloading them, and to save them to. Empty means not used |
 | `data_path` | Folder of the downloaded data files, with a subfolder per observer (default `"particle_data"`). A relative path is relative to the current directory when the data are downloaded, `~` is the home folder, and `""` means the default. `vda.DATA_PATH` is the resolved absolute path |
 

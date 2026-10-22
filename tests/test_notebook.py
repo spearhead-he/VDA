@@ -257,13 +257,13 @@ def test_add_and_remove_channel_groups(displayed):
 def test_onset_method_change_resets_its_parameters(displayed):
     tool = VDA_notebook()
     tab = tool._onsets_tab()
-    sliders = {w.description.split(" |")[0]: w for w in find(tab, widgets.IntSlider)}
+    sliders = {w.description.split(":")[0]: w for w in find(tab, widgets.IntSlider)}
     assert list(sliders) == ["s", "n"]
     sliders["s"].value = 4
     assert tool.parameters.onset_method_parameters == {"s": 4, "n": 3}
     find(tab, widgets.Dropdown, "Onset determination method:")[0].value = "poisson_cusum"
     assert tool.parameters.onset_method == "poisson_cusum"
-    sliders = {w.description.split(" |")[0]: w for w in find(tab, widgets.IntSlider)}
+    sliders = {w.description.split(":")[0]: w for w in find(tab, widgets.IntSlider)}
     assert list(sliders) == ["cusum_minutes", "sigma_multiplier"]
     sliders["cusum_minutes"].value = 60
     assert tool.parameters.onset_method_parameters == {"cusum_minutes": 60, "sigma_multiplier": 2}
@@ -297,6 +297,7 @@ def test_plots_tab(displayed):
     assert (plt.rcParams["font.size"], plt.rcParams["legend.fontsize"]) == (12, 10)
     find(tab, description="Save the VDA plots as .png files")[0].value = False
     assert tool.save_plots is False
+    assert tool.parameters.view_dfs is False
     find(tab, description="Display the produced DataFrames")[0].value = True
     assert tool.parameters.view_dfs is True
 
@@ -308,12 +309,39 @@ def test_reference_times(displayed):
     btn_add.click()
     btn_add.click()
     # new reference times at the start of the first event
-    assert tool.reference_times == [("Reference 1", datetime(2021, 10, 28, 14)), ("Reference 2", datetime(2021, 10, 28, 14))]
+    # observed at Earth
+    assert tool.reference_times == [("Reference 1", datetime(2021, 10, 28, 14), "earth"),
+                                    ("Reference 2", datetime(2021, 10, 28, 14), "earth")]
     find(tab, widgets.Text, "Label:")[0].value = "SXR peak"
     find(tab, description="time:")[0].value = datetime(2021, 10, 28, 15, 30)
     find(tab, description="Remove")[1].click()
-    assert tool.reference_times == [("SXR peak", datetime(2021, 10, 28, 15, 30))]
+    assert tool.reference_times == [("SXR peak", datetime(2021, 10, 28, 15, 30), "earth")]
     assert len(find(tab, widgets.Text, "Label:")) == 1
+    # the observer, or a distance above 0 instead of it
+    wgt_observer = find(tab, description="Observed from:")[0]
+    wgt_distance = find(tab, description="or distance (AU):")[0]
+    assert ("STEREO-A", "sta") in wgt_observer.options and wgt_observer.options[0] == ("Earth", "earth")
+    wgt_observer.value = "sta"
+    assert tool.reference_times[0][2] == "sta"
+    wgt_distance.value = 0.8
+    assert tool.reference_times[0][2] == 0.8
+    wgt_distance.value = 0
+    assert tool.reference_times[0][2] == "sta"
+    # the rows shown again keep the observer or distance
+    wgt_distance.value = 0.5
+    btn_add.click()
+    assert find(tab, description="or distance (AU):")[0].value == 0.5
+    assert tool.reference_times[0] == ("SXR peak", datetime(2021, 10, 28, 15, 30), 0.5)
+
+
+def test_reference_times_without_observer(displayed):
+    # (label, datetime) set in a script is observed at Earth
+    tool = VDA_notebook()
+    tool.reference_times = [("SXR peak", datetime(2021, 10, 28, 15, 30))]
+    tab = tool._plots_tab()
+    assert find(tab, description="Observed from:")[0].value == "earth"
+    find(tab, widgets.Text, "Label:")[0].value = "SXR"
+    assert tool.reference_times == [("SXR", datetime(2021, 10, 28, 15, 30), "earth")]
 
 
 # ---------------------------------------------------------------- analysis steps
@@ -409,8 +437,8 @@ def test_run_vda(displayed, monkeypatch, tmp_path, capsys):
     assert tool.run_onsets() is None
     tool.run_vda()
     assert "Event 1 (2021-10-28 14:00 to 2021-10-28 20:00) | Solar Orbiter" in capsys.readouterr().out
-    # the tables of the steps, and one VDA plot per event, saved
-    assert [type(o).__name__ for o in displayed] == ["DataFrame", "DataFrame", "DataFrame", "Image", "Image", "DataFrame"]
+    # one VDA plot per event, saved, without the tables of the steps (view_dfs is False by default)
+    assert [type(o).__name__ for o in displayed] == ["Image", "Image"]
     assert sorted(f.name for f in tmp_path.glob("*.png")) == [
         "2021-10-28_1400_2021-10-28_2000_het-protons_het-electrons_5min.png",
         "2021-11-09_1500_2021-11-09_2100_het-protons_het-electrons_5min.png",
@@ -437,3 +465,74 @@ def test_run_vda_reference_times_of_each_event(displayed, monkeypatch):
     tool.run_vda()
     # each event plot shows the reference times inside its data range
     assert plotted == {1: [("SXR peak", datetime(2021, 10, 28, 15))], 2: [("type II", datetime(2021, 11, 9, 16))]}
+
+
+def test_run_data_reads_the_energies_of_a_changed_first_event(displayed, capsys):
+    # the form reads the energies from the first event; they are read again if the events are changed after it
+    read_from = []
+    tool = two_events_tool()
+    construct_energies_df = tool.vda.construct_energies_df
+
+    def record(startdate=None, enddate=None):
+        construct_energies_df(startdate, enddate)
+        read_from.append(tool.vda._energies_source[1])
+
+    tool.vda.construct_energies_df = record
+    tool.parameters_form()
+    assert "Reading the energy ranges of the Solar Orbiter channels from the data of the first event (2021-10-28)" \
+        in capsys.readouterr().out
+    tool.run_data()
+    assert read_from == [pd.Timestamp("2021-10-28 14:00")]
+    tool.parameters.date_ranges = [(datetime(2021, 11, 9, 15), datetime(2021, 11, 9, 21))]
+    tool.run_data()
+    assert read_from == [pd.Timestamp("2021-10-28 14:00"), pd.Timestamp("2021-11-09 15:00")]
+
+
+def test_resample_frequency_error_in_the_form(displayed):
+    tool = VDA_notebook()
+    tab = tool._data_tab()
+    text = find(tab, widgets.Text, "Resample frequency:")[0]
+    box = next(w for w in find(tab, widgets.VBox) if text in w.children)
+    wgt_error = box.children[1]
+    assert wgt_error.value == ""
+    text.value = "5 minutes"
+    assert "color: red" in wgt_error.value and "Invalid resample frequency &#x27;5 minutes&#x27;" in wgt_error.value
+    text.value = "10min"
+    assert wgt_error.value == "" and tool.parameters.resample_frequency == "10min"
+
+
+def test_steps_in_order(displayed):
+    tool = VDA_notebook()
+    with pytest.raises(RuntimeError, match=r"Run the data step \(tool.run_data\(\)\) first"):
+        tool.background_selection()
+    with pytest.raises(RuntimeError, match="Run the data step"):
+        tool.run_onsets()
+    tool = two_events_tool()
+    tool.run_data()
+    with pytest.raises(RuntimeError, match=r"Run the onsets step \(tool.run_onsets\(\) in the notebook\) first"):
+        tool.run_vda()
+
+
+def test_run_onsets_prints_the_onsets_of_each_event(displayed, capsys):
+    tool = two_events_tool()
+    tool.run_data()
+    tool.run_onsets()
+    out = capsys.readouterr().out
+    assert "Event 1: onsets in 2 of 2 grouped channels\nEvent 2: onsets in 2 of 2 grouped channels\n" in out
+
+
+def test_run_vda_of_an_event_without_onsets(displayed, monkeypatch, capsys):
+    monkeypatch.setattr(VDA, "define_spacecraft_parameters", lambda self: None)
+    monkeypatch.setattr(observers.SolarOrbiter, "distance", lambda self, time: 0.8 * u.AU)
+    # the background window of event 2 is after the rise: no onsets
+    tool = two_events_tool()
+    tool.save_plots = False
+    tool.run_data()
+    tool.vda.set_bg_window(2, datetime(2021, 11, 9, 19), datetime(2021, 11, 9, 20))
+    tool.run_onsets()
+    assert "Event 2: no onsets in its 2 grouped channels" in capsys.readouterr().out
+    tool.run_vda()
+    out = capsys.readouterr().out
+    assert "Event 2 (2021-11-09 15:00 to 2021-11-09 21:00) | Solar Orbiter\n    No results (not enough onset points" in out
+    # the plot of event 1 only
+    assert [type(o).__name__ for o in displayed] == ["Image"]

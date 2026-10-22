@@ -102,3 +102,50 @@ def test_data_path_relative_to_the_current_directory_of_the_download(tmp_path, m
     monkeypatch.chdir(tmp_path)
     v._load_observer_data("het", "2021-10-28 14:00", "2021-10-28 15:00", "omni", ["protons"])
     assert paths == [str(tmp_path / "sep")]
+
+
+@pytest.mark.parametrize("channel_groups, error", [
+    ({}, "No grouped energy channels: add at least one"),
+    ({"protons": {}}, "No grouped energy channels: add at least one"),
+    ({"protons": {"HET/protons Channel 1": {"sensor": "het", "channels": []}}},
+     "The grouped channel HET/protons Channel 1 has no channels: select its channels, or remove it"),
+])
+def test_grouped_channels_checked_before_the_download(monkeypatch, channel_groups, error):
+    monkeypatch.setattr(observers, "epd_load", lambda **kwargs: pytest.fail("the data should not be downloaded"))
+    v = make_vda(channel_groups=channel_groups)
+    v.construct_times_df()
+    with pytest.raises(ValueError, match=error):
+        v.construct_particles_df()
+
+
+def test_resample_frequency_checked_before_the_download(monkeypatch):
+    monkeypatch.setattr(observers, "epd_load", lambda **kwargs: pytest.fail("the data should not be downloaded"))
+    v = make_vda(resample_frequency="5 minutes")
+    v.construct_times_df()
+    with pytest.raises(ValueError, match="Invalid resample frequency '5 minutes'"):
+        v.construct_particles_df()
+
+
+def test_data_file_not_found(tmp_path):
+    v = make_vda(load_data_filepath=str(tmp_path / "data.pkl"))
+    v.construct_times_df()
+    with pytest.raises(FileNotFoundError, match="Data file not found: .*data.pkl"):
+        v.construct_particles_df()
+
+
+def test_energies_need_update(monkeypatch):
+    monkeypatch.setattr(observers, "epd_load", rising_epd_data)
+    v = make_vda(date_ranges=[(datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 20))])
+    v.construct_times_df()
+    assert v.energies_need_update()
+    v.construct_energies_df()
+    assert not v.energies_need_update()
+    # another first event
+    v.parameters.date_ranges = [(datetime(2015, 6, 21, 2), datetime(2015, 6, 21, 8))]
+    v.construct_times_df()
+    assert v.energies_need_update()
+    v.construct_energies_df()
+    assert not v.energies_need_update()
+    # another observer
+    v.parameters.observer = "sta"
+    assert v.energies_need_update()

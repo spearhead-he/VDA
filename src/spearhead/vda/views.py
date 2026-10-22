@@ -5,8 +5,8 @@ or widgets. The figures are saved only when a filename is given, and can be clos
 are no longer needed.
 """
 from datetime import timedelta
-from itertools import cycle
-from math import ceil
+from itertools import cycle, islice
+from math import ceil, sqrt
 
 import matplotlib
 import numpy as np
@@ -14,6 +14,11 @@ import pandas as pd
 from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.font_manager import FontProperties
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+
+from .analysis import format_error, format_timedelta, reference_time_at_sun, release_times
 
 
 def _time_axis(ax, times, maxticks=None) -> None:
@@ -69,6 +74,27 @@ def plot_bg(vda, event_no, filename=None) -> Figure:
     return fig
 
 
+# level of the onset methods, with its color and legend label: background level, threshold (sigma) and mu_d
+# (Poisson-CUSUM)
+ONSET_LEVELS = [("bg_level", "green", "BG level"), ("threshold", "red", "Threshold"), ("mu_d", "red", "μd")]
+
+
+def _plot_onset_levels(ax, method_specific: dict) -> list[str]:
+    """Plots the levels of the onset method, and returns the texts of its values (also the k and h parameters of
+    Poisson-CUSUM)"""
+    for key, color, label in ONSET_LEVELS:
+        # a level of zero cannot be shown in log scale
+        if method_specific.get(key, 0) > 0:
+            ax.axhline(method_specific[key], color=color, linestyle="dashed", label=label)
+    names = {"bg_level": "BG", "threshold": "Threshold", "mu_d": "μd"}
+    values = [f"{names[key]} {method_specific[key]:.3g}" for key, _, _ in ONSET_LEVELS if key in method_specific]
+    if "k" in method_specific:
+        values.append(f"k {method_specific['k']:.3g}, h {method_specific['h']:.3g}")
+    if method_specific.get("bg_level") == 0:
+        values.append("Zero background (no counts):\nany counts are above it")
+    return values
+
+
 def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selected_viewing=None, filename=None) -> Figure:
     """Plots the detected onsets of a grouped channel of the event, one subplot per viewing of its sensor"""
     viewings = vda.sensor_viewings(sensor)
@@ -96,21 +122,9 @@ def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selec
         ax.set_yscale("log")
         ax.axvspan(onset_results["Background Start"], onset_results["Background End"],
                    color="green", alpha=0.3, label="BG sample")
-        values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
-        # values of the onset method: threshold (sigma), mu_d and the k and h parameters (Poisson-CUSUM)
         method_specific = onset_results["Method Specific"]
-        if not isinstance(method_specific, dict):
-            method_specific = {}
-        if "bg_level" in method_specific:
-            ax.axhline(method_specific["bg_level"], color="green", linestyle="dashed", label="BG level")
-            values.append(f"BG {method_specific['bg_level']:.3g}")
-        if "threshold" in method_specific:
-            ax.axhline(method_specific["threshold"], color="red", linestyle="dashed", label="Threshold")
-            values.append(f"Threshold {method_specific['threshold']:.3g}")
-        if "mu_d" in method_specific:
-            ax.axhline(method_specific["mu_d"], color="red", linestyle="dashed", label="μd")
-            values += [f"μd {method_specific['mu_d']:.3g}",
-                       f"k {method_specific['k']:.3g}, h {method_specific['h']:.3g}"]
+        values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
+        values += _plot_onset_levels(ax, method_specific if isinstance(method_specific, dict) else {})
         ax.axvline(onset_results["Onset Time"], color="purple", linestyle="dashed", label="Onset")
         ax.text(0.98, 0.03, "\n".join(values), transform=ax.transAxes, ha="right", va="bottom",
                 fontsize="x-small", bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"})
@@ -126,7 +140,7 @@ def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selec
     low_energy, high_energy = vda.channel_energy_range(sensor, particle, particle_prefix, channel)
     fig.suptitle(
         f"Detected onsets for event {event_no} ({temp_df.index[0]:%Y-%m-%d}) | "
-        f"{sensor}/{particle} ({low_energy:.2f}-{high_energy:.2f} MeV)"
+        f"{sensor.upper()} {particle} ({low_energy:.2f}-{high_energy:.2f} MeV)"
     )
     if filename:
         fig.savefig(filename)
@@ -156,72 +170,165 @@ REFERENCE_STYLES = [("^", "tab:pink"), ("v", "tab:olive"), ("X", "black"), ("D",
 
 
 def _plot_references(ax, references) -> None:
-    """Reference times (e.g. SXR peak, type II and III radio bursts) at inverse beta 0, one legend entry each"""
+    """Reference times (e.g. SXR peak, type II and III radio bursts) at inverse beta 0, at the Sun, with one legend entry
+    each giving the time at the Sun and the observed time, e.g. "SXR peak: 15:26:44 (15:35:00 at Earth)".
+
+    references: (label, datetime) observed at Earth, or (label, datetime, observer), see
+    analysis.reference_time_at_sun
+    """
     marker_size = plt.rcParams["lines.markersize"] ** 2
-    for (label, time), (marker, color) in zip(references, cycle(REFERENCE_STYLES)):
-        ax.scatter([0], [pd.Timestamp(time).to_pydatetime()], marker=marker, color=color, s=2 * marker_size,
-                   label=label, zorder=3, clip_on=False)
+    for reference, (marker, color) in zip(references, cycle(REFERENCE_STYLES)):
+        label, observed, observer, at_sun = reference_time_at_sun(reference)
+        ax.scatter([0], [at_sun.to_pydatetime(warn=False)], marker=marker, color=color, s=2 * marker_size,
+                   label=f"{label}: {at_sun:%H:%M:%S} ({observed:%H:%M:%S} at {observer})", zorder=5, clip_on=False)
     ax.set_xlim(left=0)
+
+
+def _plot_fit_band(ax,
+                   fit_x: np.ndarray,
+                   fit: dict,
+                   color: str) -> bool:
+    """Plots the ±2σ band of the release time around the fit line (in vda.vda_fits). Returns False if the fit has no
+    error (2 points)"""
+    a, b, b_error = fit["a"], fit["b"], fit["b_error"]
+    if np.isnan(b_error):
+        return False
+    ax.fill_between(
+        fit_x,
+        [fit["t0"] + timedelta(seconds=a * x + b - 2 * b_error) for x in fit_x],
+        [fit["t0"] + timedelta(seconds=a * x + b + 2 * b_error) for x in fit_x],
+        color=color,
+        alpha=0.1,
+    )
+    return True
+
+
+def _vda_figure(n_fits: int) -> tuple:
+    """Figure of a VDA plot: the plot, and below it the axes of the results table, with a row per fit"""
+    fig = plt.figure(figsize=(12, 9 + 0.5 * n_fits), layout="constrained")
+    grid = fig.add_gridspec(2, 1, height_ratios=[8, 0.6 + 0.55 * n_fits])
+    ax = fig.add_subplot(grid[0])
+    ax_table = fig.add_subplot(grid[1])
+    ax_table.axis("off")
+    ax.set_xlabel("Inverse Beta")
+    ax.set_ylabel("Time (UTC)")
+    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    return fig, ax, ax_table
+
+
+def _plot_fit(ax,
+              fit: dict,
+              max_inv_beta: float,
+              color: str,
+              points_color: str) -> tuple[set, bool]:
+    """Plots the points of a VDA fit (in vda.vda_fits), protons as circles and electrons as stars, and its line and ±2σ
+    band from inverse beta 0, where an open circle marks the release time at the Sun.
+
+    Returns the particles of the points, and whether the band is plotted.
+    """
+    fit_x = np.array([0, max_inv_beta])
+
+    def to_time(seconds):
+        return fit["t0"] + timedelta(seconds=seconds)
+
+    particles = set()
+    for particle, marker, size in _particle_markers():
+        is_particle = fit["particles"] == particle
+        if is_particle.any():
+            particles.add(particle)
+            ax.scatter(fit["inv_betas"][is_particle],
+                       [to_time(t) for t in fit["onset_seconds"][is_particle]],
+                       color=points_color, marker=marker, s=size, zorder=2)
+    ax.plot(fit_x, [to_time(fit["a"] * x + fit["b"]) for x in fit_x], color=color)
+    has_band = _plot_fit_band(ax, fit_x, fit, color)
+    ax.scatter([0], [to_time(fit["b"])], marker="o", facecolor="white", edgecolor=color,
+               linewidths=2, s=1.3 * plt.rcParams["lines.markersize"] ** 2, zorder=4, clip_on=False)
+    return particles, has_band
+
+
+# size of the legends inside the VDA plots, relative to the legend font size, to hide less of the plot
+INNER_LEGEND_SCALE = 0.9
+
+
+def _inner_legend_size() -> float:
+    """Font size of the legends inside the VDA plots, in points"""
+    return INNER_LEGEND_SCALE * FontProperties(size=plt.rcParams["legend.fontsize"]).get_size_in_points()
+
+
+def _plot_legends(ax,
+                  particles: set,
+                  has_band: bool,
+                  n_fits: int,
+                  color: str) -> None:
+    """Legends inside the plot: the symbols in the upper left corner (the points, the fit lines, their bands and the
+    release times at the Sun), and the reference times (the labelled points of the plot) in the lower right corner"""
+    plural = "s" if n_fits > 1 else ""
+    handles = [Line2D([], [], color="black", marker=marker, linestyle="", markersize=sqrt(size),
+                      label=particle.capitalize())
+               for particle, marker, size in _particle_markers() if particle in particles]
+    handles.append(Line2D([], [], color=color, label=f"VDA fit{plural}"))
+    if has_band:
+        handles.append(Patch(color=color, alpha=0.2, label=f"2σ band{plural}"))
+    handles.append(Line2D([], [], marker="o", markerfacecolor="white", markeredgecolor=color, markeredgewidth=2,
+                          linestyle="", markersize=1.15 * plt.rcParams["lines.markersize"], label="Release at the Sun"))
+    references = ax.get_legend_handles_labels()[0]
+    if references:
+        ax.add_artist(ax.legend(handles=references, loc="lower right", fontsize=_inner_legend_size()))
+    ax.legend(handles=handles, loc="upper left", fontsize=_inner_legend_size())
+
+
+# columns of the results table under the VDA plots
+RESULTS_COLUMNS = ["", "Release at the Sun", "At 1 AU", "Error", "APL (AU)"]
+
+
+def results_rows(fits: list[tuple]) -> list[list[str]]:
+    """Rows of the results table of a VDA plot, from (label, fit, results) of each fit (a fit of vda.vda_fits and its
+    row of vda.results): the release time at the Sun, the time its light reaches 1 AU, their error (1σ) and the APL"""
+    rows = []
+    for label, fit, res in fits:
+        at_sun, at_au = release_times(fit)
+        rows.append([label, f"{at_sun:%H:%M:%S}", f"{at_au:%H:%M:%S}",
+                     f"± {format_timedelta(res['Release Time Error'])}",
+                     f"{res['APL']:.2f} ± {format_error(res['APL Error'])}"])
+    return rows
+
+
+def _results_table(ax_table,
+                   rows: list[list[str]],
+                   colors: list[str]) -> None:
+    """Table of the results under the plot, with the label of each fit in its color"""
+    if not rows:
+        return
+    table = ax_table.table(cellText=rows, colLabels=RESULTS_COLUMNS, loc="upper center", cellLoc="center",
+                           colWidths=[0.22, 0.23, 0.15, 0.17, 0.21], edges="horizontal")
+    table.auto_set_font_size(False)
+    table.set_fontsize(plt.rcParams["legend.fontsize"])
+    table.scale(1, 2)
+    for row, color in enumerate(colors, start=1):
+        table[row, 0].get_text().set_color(color)
+        table[row, 0].get_text().set_fontweight("bold")
 
 
 def plot_vda(vda, event_no, filename=None, references=None) -> Figure:
     """Plots the VDA fit of the event, computed by vda.compute_vda().
 
-    references: optional list of (label, datetime) reference times (e.g. SXR peak, type II and III radio bursts),
-    shown at inverse beta 0, with the fit line extended to it
+    The fit line and its ±2σ band are extended to inverse beta 0, where an open circle marks the release time at the
+    Sun. The table under the plot gives it, the time its light reaches 1 AU, their error and the APL.
+    references: optional list of reference times (e.g. SXR peak, type II and III radio bursts), (label, datetime)
+    observed at Earth or (label, datetime, observer), with the observer "earth", a name of OBSERVERS (e.g. "sta") or
+    its distance from the Sun in AU. They are shown at inverse beta 0 at the Sun, i.e. minus the light travel time
+    from the Sun to their observer, with this time and the observed one in the legend
     """
     fit = vda.vda_fits[event_no]
-    inv_betas = fit["inv_betas"]
-    a, b, b_error = fit["a"], fit["b"], fit["b_error"]
-    # the fit line and its band, from inverse beta 0 if there are reference times
-    fit_x = np.concatenate([[0], inv_betas]) if references else inv_betas
-
-    def to_time(seconds):
-        return fit["t0"] + timedelta(seconds=seconds)
-
-    res = vda.results.loc[event_no]
-    fig = plt.figure(figsize=(12, 8), layout="constrained")
-    ax = fig.add_subplot()
-    for particle, marker, size in _particle_markers():
-        is_particle = fit["particles"] == particle
-        if is_particle.any():
-            ax.scatter(
-                inv_betas[is_particle],
-                [to_time(t) for t in fit["onset_seconds"][is_particle]],
-                color="black",
-                marker=marker,
-                s=size,
-                label=particle.capitalize(),
-            )
-    ax.plot(
-        fit_x,
-        [to_time(a * x + b) for x in fit_x],
-        label="Linear Regression",
-        color="blue",
-    )
-    ax.fill_between(
-        fit_x,
-        [to_time(a * x + b - 2 * b_error) for x in fit_x],
-        [to_time(a * x + b + 2 * b_error) for x in fit_x],
-        color="blue",
-        alpha=0.1,
-    )
+    fig, ax, ax_table = _vda_figure(1)
+    particles, has_band = _plot_fit(ax, fit, max(fit["inv_betas"]), "blue", "black")
     if references:
         _plot_references(ax, references)
+    _plot_legends(ax, particles, has_band, 1, "blue")
+    ax.set_xlim(0, 1.03 * max(fit["inv_betas"]))
     fig.suptitle(f"Event {event_no} ({vda.df_grouped.loc[event_no].index[1].to_pydatetime().strftime('%Y-%m-%d')})"
                  f" | {vda.observer.label}")
-    ax.set_xlabel("Inverse Beta")
-    ax.set_ylabel("Time")
-    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    # the results are shown as legend entries without markers
-    for label in (
-        f"Extra Time = {vda.format_timedelta(res['Extra Time'])}",
-        f"Release Time = {res['Release Time']} +/- {vda.format_timedelta(res['Release Time Error'])}",
-        f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
-    ):
-        ax.plot([], [], alpha=0, label=label)
-    # legend between the title and the plot
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), ncols=2, frameon=False)
+    _results_table(ax_table, results_rows([(vda.observer.label, fit, vda.results.loc[event_no])]), ["black"])
     if filename:
         fig.savefig(filename)
     return fig
@@ -242,68 +349,32 @@ def plot_vda_combined(vdas, event_no=1, filename=None, references=None, title=No
 
     vdas: {label: VDA}, e.g. {"STEREO-A": vda_sta, "SOHO": vda_soho}. The spacecraft without a fit of the event are
     left out. Each spacecraft has its color, with the proton points as circles and the electron points as stars, and
-    its fit line and 2-sigma band extended to inverse beta 0.
-    references: optional list of (label, datetime) reference times, shown at inverse beta 0
+    its fit line and ±2σ band extended to inverse beta 0, where an open circle marks its release time at the Sun. The
+    table under the plot gives, for each spacecraft, the release time at the Sun, the time its light reaches 1 AU,
+    their error and the APL.
+    references: optional list of reference times, as in plot_vda
     title: title of the plot, by default "VDA of" the date of the event
     """
     fits = {label: vda for label, vda in vdas.items() if event_no in getattr(vda, "vda_fits", {})}
-    fig = plt.figure(figsize=(12, 9), layout="constrained")
-    ax = fig.add_subplot()
+    fig, ax, ax_table = _vda_figure(len(fits))
     max_inv_beta = max((max(vda.vda_fits[event_no]["inv_betas"]) for vda in fits.values()), default=1)
-    fit_x = np.array([0, max_inv_beta])
-    colors = cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"])
-    particles = set()
-    for (label, vda), color in zip(fits.items(), colors):
-        fit = vda.vda_fits[event_no]
-        a, b, b_error = fit["a"], fit["b"], fit["b_error"]
-
-        def to_time(seconds, t0=fit["t0"]):
-            return t0 + timedelta(seconds=seconds)
-
-        for particle, marker, size in _particle_markers():
-            is_particle = fit["particles"] == particle
-            if is_particle.any():
-                particles.add(particle)
-                ax.scatter(fit["inv_betas"][is_particle],
-                           [to_time(t) for t in fit["onset_seconds"][is_particle]],
-                           color=color, marker=marker, s=size, zorder=2)
-        res = vda.results.loc[event_no]
-        ax.plot(
-            fit_x,
-            [to_time(a * x + b) for x in fit_x],
-            color=color,
-            label=(f"{label}: release {pd.Timestamp(res['Release Time']):%H:%M:%S} "
-                   f"+/- {vda.format_timedelta(res['Release Time Error'])}, APL {res['APL']:.2f} +/- {res['APL Error']:.2f}"),
-        )
-        ax.fill_between(
-            fit_x,
-            [to_time(a * x + b - 2 * b_error) for x in fit_x],
-            [to_time(a * x + b + 2 * b_error) for x in fit_x],
-            color=color,
-            alpha=0.1,
-        )
-    # the particles, in black, and the reference times in a legend inside the plot
-    n_spacecraft = len(ax.get_lines())
-    for particle, marker, size in _particle_markers():
-        if particle in particles:
-            ax.scatter([], [], color="black", marker=marker, s=size, label=particle.capitalize())
+    colors = list(islice(cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"]), len(fits)))
+    particles, has_band = set(), False
+    for vda, color in zip(fits.values(), colors):
+        fit_particles, fit_band = _plot_fit(ax, vda.vda_fits[event_no], max_inv_beta, color, color)
+        particles |= fit_particles
+        has_band |= fit_band
     if references:
         _plot_references(ax, references)
-    handles, labels = ax.get_legend_handles_labels()
-    if handles[n_spacecraft:]:
-        ax.add_artist(ax.legend(handles[n_spacecraft:], labels[n_spacecraft:], loc="upper left"))
-    # the spacecraft in the legend between the title and the plot
-    if handles[:n_spacecraft]:
-        ax.legend(handles[:n_spacecraft], labels[:n_spacecraft], loc="lower center", bbox_to_anchor=(0.5, 1.01),
-                  frameon=False)
+    if fits:
+        _plot_legends(ax, particles, has_band, len(fits), "gray")
     ax.set_xlim(0, 1.03 * max_inv_beta)
     if title:
         fig.suptitle(title)
     elif fits:
         fig.suptitle(f"VDA of {next(iter(fits.values())).vda_fits[event_no]['t0']:%Y-%m-%d}")
-    ax.set_xlabel("Inverse Beta")
-    ax.set_ylabel("Time")
-    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    rows = results_rows([(label, vda.vda_fits[event_no], vda.results.loc[event_no]) for label, vda in fits.items()])
+    _results_table(ax_table, rows, colors)
     if filename:
         fig.savefig(filename)
     return fig

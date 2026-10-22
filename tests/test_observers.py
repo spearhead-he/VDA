@@ -1,4 +1,6 @@
 """Observers (spacecraft): data loading, viewings and default grouped channels"""
+import io
+import logging
 from datetime import datetime
 
 import numpy as np
@@ -301,3 +303,47 @@ def test_unknown_observer():
     p = VDA_parameters()
     with pytest.raises(ValueError, match="Unknown observer 'other'"):
         p.observer = "other"
+
+
+def test_download_once(monkeypatch, tmp_path, capsys):
+    # the files are downloaded once, without progress bars, into the cache
+    urls = []
+
+    class Response:
+        headers = {}
+
+        def __init__(self, url):
+            urls.append(url)
+
+        def __enter__(self):
+            return io.BytesIO(b"kernel")
+
+        def __exit__(self, *args):
+            return False
+
+    storage = observers.SqliteStorage(str(tmp_path / "cache.db"))
+    cache = observers.Cache(observers._QuietDownloader(), storage, tmp_path, expiry=None)
+    monkeypatch.setattr(observers, "_cache_storage", storage)
+    monkeypatch.setattr(observers, "_cache", cache)
+    monkeypatch.setattr(observers, "urlopen", lambda url, timeout: Response(url))
+    # the file name of the sunpy cache is read from the response of urllib
+    monkeypatch.setattr("sunpy.data.data_manager.cache.urlopen", lambda url: Response(url))
+    paths = observers.download_once(["https://example.org/a.tls", "https://example.org/b.bsp"], "test kernels")
+    assert capsys.readouterr().out == "Downloading the test kernels (only once)\n"
+    assert [p.read_bytes() for p in paths] == [b"kernel", b"kernel"]
+    assert observers.download_once(["https://example.org/a.tls", "https://example.org/b.bsp"], "test kernels") == paths
+    assert capsys.readouterr().out == ""
+
+
+def test_spiceypy_logs_only_warnings():
+    # set by the package, whatever the level of the root logger (set to INFO by drms)
+    assert logging.getLogger("spiceypy").level == logging.WARNING
+
+
+def test_quiet_downloader_error(monkeypatch, tmp_path):
+    def no_connection(url, timeout):
+        raise OSError("Connection refused")
+
+    monkeypatch.setattr(observers, "urlopen", no_connection)
+    with pytest.raises(observers.DownloaderError, match="Connection refused"):
+        observers._QuietDownloader().download("https://example.org/a.tls", str(tmp_path / "a.tls"))

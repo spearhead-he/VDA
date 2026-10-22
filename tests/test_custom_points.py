@@ -13,7 +13,7 @@ from spearhead.vda import notebook, views
 from spearhead.vda.analysis import (CustomPointsVDA, inverse_beta, mean_energy, parse_energy, parse_particle,
                                     points_df, read_points_file)
 from spearhead.vda.notebook import VDA_custom_points_notebook
-from tests.helpers import write_csv
+from tests.helpers import table_rows, write_csv
 from tests.test_notebook import find
 
 EXAMPLE = "examples/custom_points_example.csv"
@@ -98,11 +98,32 @@ def test_custom_points_sorted_by_inverse_beta():
     assert list(fit["particles"]) == ["electrons", "protons", "protons", "protons"]
 
 
-def test_custom_points_need_two_points(capsys):
+def test_custom_points_need_two_points():
     vda = CustomPointsVDA(points_df(line_points()[:1]), 1.0, name="group SOHO")
     vda.compute_vda()
-    assert "Not enough onset points in group SOHO" in capsys.readouterr().out
     assert vda.results.loc[1].isna().all() and vda.vda_fits == {}
+
+
+def test_custom_points_need_two_energies():
+    # two onsets of the same energy give no velocity dispersion
+    vda = CustomPointsVDA(points_df([("2024-11-21 18:20", "13", "p"), ("2024-11-21 18:30", "13", "p")]), 1.0)
+    vda.compute_vda()
+    assert vda.results.loc[1].isna().all() and vda.vda_fits == {}
+
+
+def test_custom_points_published_path_length():
+    # the onsets of the 10 November 2022 event, Solar Orbiter EPT-South electrons at 0.61 AU, read from the VDA figure
+    # of Rodriguez-Garcia et al. (arXiv:2604.12731): L = 0.66 +/- 0.08 AU, release at the Sun 17:08:43
+    energies = [0.036, 0.041, 0.047, 0.054, 0.063, 0.074, 0.087, 0.102, 0.121, 0.143, 0.169, 0.192]
+    onsets = ["17:24:00", "17:23:30", "17:23:00", "17:21:00", "17:19:30", "17:20:30", "17:19:00", "17:19:00",
+              "17:18:00", "17:17:30", "17:18:00", "17:16:00"]
+    vda = CustomPointsVDA(points_df([(f"2022-11-10 {onset}", f"{energy}", "e") for onset, energy in zip(onsets, energies)]),
+                          0.61)
+    vda.compute_vda()
+    assert vda.results.loc[1, "APL"] == pytest.approx(0.66, abs=0.02)
+    fit = vda.vda_fits[1]
+    release_at_the_sun = fit["t0"] + pd.Timedelta(seconds=fit["b"])
+    assert abs(release_at_the_sun - pd.Timestamp("2022-11-10 17:08:43")) < pd.Timedelta(seconds=30)
 
 
 # ---------------------------------------------------------------- points file
@@ -142,7 +163,7 @@ def test_plot_of_custom_points(tmp_path):
         vda.compute_vda()
     fig = views.plot_vda_combined(vdas, 1, filename=tmp_path / "points.png", title="SEP event of 2024-11-21")
     assert fig.get_suptitle() == "SEP event of 2024-11-21"
-    assert [line.get_label().split(":")[0] for line in fig.axes[0].get_lines()] == ["SOHO", "STEREO-A", "Solar Orbiter"]
+    assert [row[0] for row in table_rows(fig)[1:]] == ["SOHO", "STEREO-A", "Solar Orbiter"]
     assert (tmp_path / "points.png").stat().st_size > 0
     assert views.custom_points_plot_filename(vdas) == "2024-11-21_1809_custom_points.png"
     plt.close(fig)
@@ -234,7 +255,7 @@ def test_default_reference_time(displayed):
     tab = tool._plots_tab()
     find(tab, description="Add Reference Time")[0].click()
     # the earliest onset, to the minute
-    assert tool.reference_times == [("Reference 1", datetime(2024, 11, 21, 18, 9))]
+    assert tool.reference_times == [("Reference 1", datetime(2024, 11, 21, 18, 9), "earth")]
 
 
 def test_run_vda_from_the_form(displayed, monkeypatch, tmp_path, capsys):
@@ -248,7 +269,8 @@ def test_run_vda_from_the_form(displayed, monkeypatch, tmp_path, capsys):
     assert "A\n    Release Time :" in out and "B\n    Release Time :" in out
     assert list(tool.results.index) == ["A", "B"] and tool.results.index.name == "Group"
     assert tool.results.loc["A", "APL"] == pytest.approx(1200 / AU_SECONDS)
-    assert tool.results.loc["B", "APL"] == pytest.approx(2400 / AU_SECONDS)
+    # the same slope at another distance: the same path length
+    assert tool.results.loc["B", "APL"] == pytest.approx(1200 / AU_SECONDS)
     assert [type(o).__name__ for o in displayed] == ["Image"]
     assert [f.name for f in tmp_path.glob("*.png")] == ["2021-10-31_0330_custom_points.png"]
 
@@ -260,7 +282,7 @@ def test_run_vda_from_the_points_file(displayed, capsys):
     tool.run_vda()
     assert list(tool.results.index) == ["SOHO", "STEREO-A", "Solar Orbiter"]
     assert tool.results.loc["STEREO-A", "Release Time"] == "2024-11-21 18:05:27"
-    assert tool.results.loc["Solar Orbiter", "APL"] == pytest.approx(2.26, abs=0.005)
+    assert tool.results.loc["Solar Orbiter", "APL"] == pytest.approx(1.87, abs=0.005)
 
 
 @pytest.mark.parametrize("groups, message", [
@@ -274,3 +296,17 @@ def test_run_vda_invalid_groups(displayed, groups, message):
     tool.groups = groups
     with pytest.raises(ValueError, match=message):
         tool.run_vda()
+
+
+def test_points_file_not_found(tmp_path):
+    with pytest.raises(FileNotFoundError, match="Points file not found: .*points.csv"):
+        read_points_file(str(tmp_path / "points.csv"))
+
+
+def test_run_vda_without_fit(displayed, capsys):
+    # one point only: no fit and no plot
+    tool = VDA_custom_points_notebook()
+    tool.groups = [{"label": "A", "distance": 1.0, "points": line_points()[:1]}]
+    tool.run_vda()
+    assert "A\n    No results (not enough onset points" in capsys.readouterr().out
+    assert displayed == []
