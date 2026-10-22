@@ -347,3 +347,18 @@ def test_quiet_downloader_error(monkeypatch, tmp_path):
     monkeypatch.setattr(observers, "urlopen", no_connection)
     with pytest.raises(observers.DownloaderError, match="Connection refused"):
         observers._QuietDownloader().download("https://example.org/a.tls", str(tmp_path / "a.tls"))
+
+
+def test_quiet_downloader_overwrite(monkeypatch, tmp_path):
+    # some sunpy builds pass overwrite to the downloader of the cache
+    class Response(io.BytesIO):
+        def __init__(self, url):
+            super().__init__(b"new")
+
+    monkeypatch.setattr(observers, "urlopen", lambda url, timeout: Response(url))
+    path = tmp_path / "a.tls"
+    path.write_bytes(b"old")
+    observers._QuietDownloader().download("https://example.org/a.tls", str(path), overwrite=False)
+    assert path.read_bytes() == b"old"
+    observers._QuietDownloader().download("https://example.org/a.tls", str(path), overwrite=True)
+    assert path.read_bytes() == b"new"

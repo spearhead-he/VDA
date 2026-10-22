@@ -37,7 +37,13 @@ class _QuietDownloader(DownloaderBase):
     and "Exception ignored ... signal only works in main thread" tracebacks when the loop is closed.
     """
 
-    def download(self, url: str, path: str) -> None:
+    def download(self,
+                 url: str,
+                 path: str,
+                 overwrite: bool = True) -> None:
+        # overwrite is passed by the cache of some sunpy builds
+        if not overwrite and os.path.exists(path):
+            return
         try:
             with urlopen(url, timeout=60) as response, open(path, "wb") as f:
                 shutil.copyfileobj(response, f)
