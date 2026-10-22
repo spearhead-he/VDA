@@ -217,7 +217,7 @@ def plot_vda(vda, event_no, filename=None, references=None) -> Figure:
     for label in (
         f"Extra Time = {vda.format_timedelta(res['Extra Time'])}",
         f"Release Time = {res['Release Time']} +/- {vda.format_timedelta(res['Release Time Error'])}",
-        f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f}",
+        f"APL = {res['APL']:.2f} +/- {res['APL Error']:.2f} AU",
     ):
         ax.plot([], [], alpha=0, label=label)
     # legend between the title and the plot
@@ -273,7 +273,8 @@ def plot_vda_combined(vdas, event_no=1, filename=None, references=None, title=No
             [to_time(a * x + b) for x in fit_x],
             color=color,
             label=(f"{label}: release {pd.Timestamp(res['Release Time']):%H:%M:%S} "
-                   f"+/- {vda.format_timedelta(res['Release Time Error'])}, APL {res['APL']:.2f} +/- {res['APL Error']:.2f}"),
+                   f"+/- {vda.format_timedelta(res['Release Time Error'])}, "
+                   f"APL {res['APL']:.2f} +/- {res['APL Error']:.2f} AU"),
         )
         ax.fill_between(
             fit_x,

@@ -105,6 +105,21 @@ def test_custom_points_need_two_points(capsys):
     assert vda.results.loc[1].isna().all() and vda.vda_fits == {}
 
 
+def test_custom_points_published_path_length():
+    # the onsets of the 10 November 2022 event, Solar Orbiter EPT-South electrons at 0.61 AU, read from the VDA figure
+    # of Rodriguez-Garcia et al. (arXiv:2604.12731): L = 0.66 +/- 0.08 AU, release at the Sun 17:08:43
+    energies = [0.036, 0.041, 0.047, 0.054, 0.063, 0.074, 0.087, 0.102, 0.121, 0.143, 0.169, 0.192]
+    onsets = ["17:24:00", "17:23:30", "17:23:00", "17:21:00", "17:19:30", "17:20:30", "17:19:00", "17:19:00",
+              "17:18:00", "17:17:30", "17:18:00", "17:16:00"]
+    vda = CustomPointsVDA(points_df([(f"2022-11-10 {onset}", f"{energy}", "e") for onset, energy in zip(onsets, energies)]),
+                          0.61)
+    vda.compute_vda()
+    assert vda.results.loc[1, "APL"] == pytest.approx(0.66, abs=0.02)
+    fit = vda.vda_fits[1]
+    release_at_the_sun = fit["t0"] + pd.Timedelta(seconds=fit["b"])
+    assert abs(release_at_the_sun - pd.Timestamp("2022-11-10 17:08:43")) < pd.Timedelta(seconds=30)
+
+
 # ---------------------------------------------------------------- points file
 
 def test_read_example_points_file():
@@ -248,7 +263,8 @@ def test_run_vda_from_the_form(displayed, monkeypatch, tmp_path, capsys):
     assert "A\n    Release Time :" in out and "B\n    Release Time :" in out
     assert list(tool.results.index) == ["A", "B"] and tool.results.index.name == "Group"
     assert tool.results.loc["A", "APL"] == pytest.approx(1200 / AU_SECONDS)
-    assert tool.results.loc["B", "APL"] == pytest.approx(2400 / AU_SECONDS)
+    # the same slope at another distance: the same path length
+    assert tool.results.loc["B", "APL"] == pytest.approx(1200 / AU_SECONDS)
     assert [type(o).__name__ for o in displayed] == ["Image"]
     assert [f.name for f in tmp_path.glob("*.png")] == ["2021-10-31_0330_custom_points.png"]
 
@@ -260,7 +276,7 @@ def test_run_vda_from_the_points_file(displayed, capsys):
     tool.run_vda()
     assert list(tool.results.index) == ["SOHO", "STEREO-A", "Solar Orbiter"]
     assert tool.results.loc["STEREO-A", "Release Time"] == "2024-11-21 18:05:27"
-    assert tool.results.loc["Solar Orbiter", "APL"] == pytest.approx(2.26, abs=0.005)
+    assert tool.results.loc["Solar Orbiter", "APL"] == pytest.approx(1.87, abs=0.005)
 
 
 @pytest.mark.parametrize("groups, message", [

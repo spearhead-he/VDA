@@ -57,7 +57,8 @@ def check_exact_line_fit(extra_seconds):
     expected_release = datetime(2021, 10, 31, 3, 0) + timedelta(seconds=extra_seconds)
     assert result["Release Time"] == expected_release.strftime("%Y-%m-%d %H:%M:%S")
     assert pd.Timedelta(result["Extra Time"]).total_seconds() == pytest.approx(extra_seconds, abs=1e-5)
-    assert result["APL"] == pytest.approx(1200 / extra_seconds)
+    # the path length of the slope, in AU, whatever the distance of the observer
+    assert result["APL"] == pytest.approx(1200 / (u.AU / const.c).to(u.s).value)
     assert pd.Timedelta(result["Release Time Error"]).total_seconds() == pytest.approx(0, abs=1e-3)
 
 

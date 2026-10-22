@@ -4,6 +4,12 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+- The apparent path length (APL) is in AU: the path length $L = a \cdot c$ of the slope $a$ of the VDA fit. It was the path length divided by the distance of the observer from the Sun, too large by the factor 1 / distance (e.g. 1.76 instead of 1.42 AU for Solar Orbiter at 0.80 AU in the default event). The unit is shown in the printed results and the VDA plots.
+
+### Upgrading from 1.1.0
+- The APL of every analysis changes, except for an observer at 1 AU: multiply a previous APL by the distance of the observer from the Sun (AU) to compare. The release times are unchanged.
+
 ## [1.1.0] - 2026-10-17
 
 ### Added
