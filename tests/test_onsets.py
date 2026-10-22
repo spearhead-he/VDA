@@ -98,3 +98,25 @@ def test_onset_detection_poisson_cusum_without_onset():
 def test_onset_detection_unknown_method():
     with pytest.raises(ValueError, match="Unknown onset method 'cusum'"):
         VDA(VDA_parameters())._onset_detection(intensity_series(), "cusum")
+
+
+def test_onset_counts(capsys):
+    index = pd.MultiIndex.from_tuples(
+        [(1, "het", "protons", viewing, "H_Flux", channel) for channel in ("P1", "P2", "P3") for viewing in ("sun", "asun")]
+        + [(2, "het", "protons", "sun", "H_Flux", channel) for channel in ("P1", "P2", "P3")],
+        names=["Event No", "sensor", "particle", "viewing", "prefix", "channels"],
+    )
+    v = VDA(VDA_parameters(date_ranges=[(pd.Timestamp("2021-10-28 14:00"), pd.Timestamp("2021-10-28 20:00")),
+                                        (pd.Timestamp("2021-11-09 15:00"), pd.Timestamp("2021-11-09 21:00"))]))
+    v.construct_times_df()
+    # event 1: onsets of P1 in both viewings and of P2 in one; event 2: none
+    onsets = [pd.Timestamp("2021-10-28 16:00"), pd.Timestamp("2021-10-28 16:05"), pd.NaT, pd.Timestamp("2021-10-28 16:10"),
+              pd.NaT, pd.NaT, pd.NaT, pd.NaT, pd.NaT]
+    v.df_onsets = pd.DataFrame({"Onset Time": onsets}, index=index)
+    v.clean_onsets()
+    assert v.onset_counts().to_dict("index") == {1: {"With Onset": 2, "Channels": 3},
+                                                 2: {"With Onset": 0, "Channels": 3}}
+    v.print_onset_counts()
+    out = capsys.readouterr().out
+    assert "Event 1: onsets in 2 of 3 grouped channels\n" in out
+    assert "Event 2: no onsets in its 3 grouped channels. Check the background window" in out

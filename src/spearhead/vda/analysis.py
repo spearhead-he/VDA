@@ -9,6 +9,8 @@ The VDA class performs the steps of the analysis:
 CustomPointsVDA is the VDA fit of onset points given by the user (onset time, energy and particle of each point),
 in groups (e.g. one per spacecraft), read from a points file with read_points_file() or created from a DataFrame.
 
+Reference times (e.g. the SXR peak) are moved from their observer to the Sun with reference_time_at_sun().
+
 The parameters of VDA are in conf.py, the observers (spacecraft) in observers.py and its plots in views.py.
 """
 import os
@@ -22,10 +24,12 @@ from contextlib import redirect_stdout
 from io import StringIO
 from math import sqrt
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from pyonset import onset_determination
+from sunpy.coordinates import get_earth
 
-from .conf import DEFAULT_DATA_PATH
+from .conf import DEFAULT_DATA_PATH, check_resample_frequency
 from .observers import OBSERVERS
 
 # Rest mass energy of the particles, in MeV
@@ -46,34 +50,165 @@ def inverse_beta(energy, particle) -> float:
     return 1 / sqrt(1 - (1 / (1 + energy / M_REST[particle])) ** 2)
 
 
-def fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, name) -> tuple:
+def check_file_exists(filepath: str, description: str) -> None:
+    """Raises FileNotFoundError, with the current folder, if the file (e.g. "Events file") does not exist"""
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(f"{description} not found: {filepath} (a relative path is relative to the current "
+                                f"folder, {os.getcwd()})")
+
+
+def to_datetimes(column: pd.Series, filepath: str) -> pd.Series:
+    """The datetimes of a column of a file, with an error that names the rows that are not datetimes"""
+    datetimes = pd.to_datetime(column, errors="coerce")
+    invalid = column.notna() & datetimes.isna()
+    if invalid.any():
+        rows = ", ".join(f"{index} ({value!r})" for index, value in column[invalid].items())
+        raise ValueError(f"Invalid datetimes in the column {column.name} of {filepath}, in the rows {rows}: use one "
+                         f"format supported by pandas.to_datetime for the whole file, e.g. 2024-12-31 00:00:00")
+    return datetimes
+
+
+def has_enough_points(inv_betas) -> bool:
+    """Whether the VDA line can be fitted: it needs onset points at two different energies at least"""
+    return len(np.unique(inv_betas)) >= 2
+
+
+def fit_warnings(a: float,
+                 b: float,
+                 onset_seconds: np.ndarray) -> list[str]:
+    """Warnings for a VDA fit that is not physical: a negative path length, or a release after the earliest onset"""
+    if a <= 0:
+        return ["the APL is not positive: the onsets do not show a velocity dispersion (the faster particles do not "
+                "arrive first). Check the background windows and the onsets"]
+    if b > onset_seconds.min():
+        return ["the release at the Sun is after the earliest onset. Check the background windows and the onsets"]
+    return []
+
+
+def fit_vda(inv_betas: np.ndarray,
+            onset_seconds: np.ndarray,
+            t0: datetime,
+            t_sun_to_observer: float,
+            name: str | None = None) -> tuple:
     """Fits the VDA line of the points: onset_seconds (seconds after t0) against inv_betas.
 
-    t_sun_to_observer is the light travel time from the Sun to the observer (seconds), and name names the points in
-    the messages (e.g. "event 1"). Returns the results (release time, extra time, APL in AU and their errors) and the
-    fit (line t = a * inverse beta + b, with the error of b). The APL is the path length L = a * c of the slope a.
+    t_sun_to_observer is the light travel time from the Sun to the observer (seconds). The release time is the time at
+    the Sun (the fit at inverse beta 0) plus this light travel time (the extra time), for comparison with
+    observations at the observer. Returns the results (release time, extra time, APL in AU and their errors) and the
+    fit (line t = a * inverse beta + b, with the error of b, and the warnings of fit_warnings). The APL is the path
+    length L = a * c of the slope a. With 2 points the line goes through both, and the errors are NaN. name (e.g.
+    "event 1") is no longer used, the warnings are returned.
     """
-    try:
+    if len(inv_betas) > 2:
         p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
-        a = p[0]
-        b = p[1]
+        a, b = p
         a_error = np.sqrt(V[0][0])
         b_error = np.sqrt(V[1][1])
-    except ValueError:
-        # not enough points for cov matrix
-        print(f"Not enough points for covariance matrix generation in {name}")
+    else:
         a, b = np.polyfit(inv_betas, onset_seconds, 1)
-        a_error = 0
-        b_error = 0
+        a_error = np.nan
+        b_error = np.nan
     results = {
         "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
-        "Release Time Error": timedelta(seconds=b_error),
+        "Release Time Error": pd.NaT if np.isnan(b_error) else timedelta(seconds=b_error),
         "Extra Time": timedelta(seconds=t_sun_to_observer),
         "APL": a / AU_LIGHT_SECONDS,
         "APL Error": a_error / AU_LIGHT_SECONDS,
     }
-    fit = {"a": a, "b": b, "b_error": b_error}
+    fit = {"a": a, "b": b, "b_error": b_error, "warnings": fit_warnings(a, b, onset_seconds)}
     return results, fit
+
+
+def format_timedelta(td) -> str:
+    """The timedelta as H:MM:SS, without the fraction of seconds, or "n/a" if it is missing"""
+    if pd.isna(td):
+        return "n/a"
+    return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
+
+
+def format_error(value: float) -> str:
+    """The error of the APL with 2 decimals, or "n/a" if it is missing (e.g. a fit of 2 points)"""
+    return "n/a" if pd.isna(value) else f"{value:.2f}"
+
+
+def format_release_time(res: pd.Series, time_format: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """Release time of the VDA results, with the light travel time (extra time) it includes and its error.
+
+    E.g. "2021-10-28 15:26:11 (+0:06:40) ± 0:03:38": the release time at the Sun is 15:19:31.
+    """
+    release_time = pd.Timestamp(res["Release Time"])
+    return (f"{release_time:{time_format}} (+{format_timedelta(res['Extra Time'])}) "
+            f"± {format_timedelta(res['Release Time Error'])}")
+
+
+def release_times(fit: dict) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Release time at the Sun of a VDA fit (in VDA.vda_fits), where the fit line meets inverse beta 0, and the time
+    its light reaches 1 AU, for comparison with observations at Earth"""
+    at_sun = pd.Timestamp(fit["t0"]) + pd.Timedelta(seconds=fit["b"])
+    return at_sun, at_sun + pd.Timedelta(seconds=AU_LIGHT_SECONDS)
+
+
+class ReferenceTime(NamedTuple):
+    """A reference time (e.g. the SXR peak), as observed and at the Sun"""
+    label: str
+    observed: pd.Timestamp
+    # the observer as text, e.g. "Earth", "STEREO-A" or "0.80 AU"
+    observer: str
+    at_sun: pd.Timestamp
+
+
+# name of the observers of reference times that are not in OBSERVERS
+EARTH = "earth"
+
+
+def observer_distance(observer: str | float,
+                      time: pd.Timestamp) -> float:
+    """Distance from the Sun (AU) at the time of the observer of a reference time: "earth", a name of OBSERVERS (e.g.
+    "sta"), or a distance in AU"""
+    if isinstance(observer, (int, float)):
+        if observer <= 0:
+            raise ValueError(f"Invalid distance of the observer: {observer} AU. It must be positive")
+        return float(observer)
+    if observer == EARTH:
+        return get_earth(time).radius.to(u.AU).value
+    if observer not in OBSERVERS:
+        raise ValueError(f"Unknown observer {observer!r}: use {EARTH!r}, one of {', '.join(map(repr, OBSERVERS))}, "
+                         "or a distance in AU")
+    OBSERVERS[observer].initialize_position()
+    return OBSERVERS[observer].distance(time).to(u.AU).value
+
+
+def reference_time_at_sun(reference: tuple) -> ReferenceTime:
+    """The reference time at the Sun: the observed time minus the light travel time from the Sun to its observer.
+
+    reference: (label, datetime) observed at Earth, or (label, datetime, observer), with the observer as in
+    observer_distance ("earth", a name of OBSERVERS, or a distance in AU).
+    """
+    label, time, *observer = reference
+    observer = observer[0] if observer else EARTH
+    observed = pd.Timestamp(time)
+    distance = observer_distance(observer, observed)
+    if isinstance(observer, (int, float)):
+        text = f"{distance:.2f} AU"
+    else:
+        text = "Earth" if observer == EARTH else OBSERVERS[observer].label
+    return ReferenceTime(label, observed, text, observed - pd.Timedelta(seconds=distance * AU_LIGHT_SECONDS))
+
+
+def print_fit_results(label: str,
+                      res: pd.Series,
+                      warnings: list[str] = ()) -> None:
+    """Prints the results of a VDA fit (a row of VDA.results) under the label, with the warnings of the fit"""
+    print(label)
+    if pd.isna(res.get("APL")):
+        print("    No results (not enough onset points: they are needed at two different energies at least)\n")
+        return
+    print(f"    Release Time : {format_release_time(res)}")
+    print(f"    Extra Time   : {format_timedelta(res['Extra Time'])} (light travel time from the Sun)")
+    print(f"    APL          : {res['APL']:.2f} ± {format_error(res['APL Error'])} AU")
+    for warning in warnings:
+        print(f"    Warning: {warning}")
+    print()
 
 
 class VDA:
@@ -150,17 +285,19 @@ class VDA:
 
     def times_file_type(self, filepath: str) -> str:
         """Returns "reference times" or "datetime ranges", deduced from the columns of the events file"""
+        check_file_exists(filepath, "Events file")
         columns = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True, nrows=0).columns.str.strip()
         self._check_times_file_columns(filepath, columns)
         return "reference times" if self.REF_TIME_COLNAME in columns else "datetime ranges"
 
     def _read_times_file(self, filepath: str) -> pd.DataFrame:
         """Reads the events file. Its type (datetime ranges or reference times) is deduced from its columns"""
+        check_file_exists(filepath, "Events file")
         df = pd.read_csv(filepath, sep=",", header=0, index_col=0, skipinitialspace=True)
         df.columns = df.columns.str.strip()
         df.index.name = self.EVENT_INDEX_NAME
         self._check_times_file_columns(filepath, df.columns)
-        df = df.apply(pd.to_datetime)
+        df = df.apply(lambda column: to_datetimes(column, filepath))
         if self.REF_TIME_COLNAME in df.columns:
             df[self.START_TIME_COLNAME] = df[self.REF_TIME_COLNAME] - timedelta(hours=self.parameters.bg_hours_prior)
             df[self.END_TIME_COLNAME] = df[self.REF_TIME_COLNAME] + timedelta(hours=self.parameters.bg_hours_after)
@@ -180,6 +317,11 @@ class VDA:
         """
         if self.parameters.input_filepath:
             self.df_times = self._read_times_file(self.parameters.input_filepath)
+            for index_event, row in self.df_times.iterrows():
+                start, end = row[self.START_TIME_COLNAME], row[self.END_TIME_COLNAME]
+                if not start < end:
+                    raise ValueError(f"Event {index_event} of {self.parameters.input_filepath}: the datetime range "
+                                     f"start ({start}) must be before its end ({end})")
         else:
             date_ranges = self.parameters.date_ranges
             if len(date_ranges) == 0:
@@ -318,9 +460,23 @@ class VDA:
             df_sensors[sensor] = pd.concat(df_particles)
 
         self.df_energies = pd.concat(df_sensors.values(), keys=list(df_sensors), names=["sensor", "channel"])
+        # the energies can differ between observers and dates (e.g. SOHO EPHIN), see energies_need_update()
+        self._energies_source = (self.parameters.observer, pd.Timestamp(startdate), pd.Timestamp(enddate))
 
         if self.parameters.view_dfs:
             return self.df_energies
+
+    def energies_need_update(self) -> bool:
+        """Whether self.df_energies is missing, or was not read from the observer and the first event of self.df_times
+        (e.g. read before the events were changed)"""
+        if getattr(self, "df_energies", None) is None:
+            return True
+        first_event = self.df_times.iloc[0]
+        return getattr(self, "_energies_source", None) != (
+            self.parameters.observer,
+            pd.Timestamp(first_event[self.START_TIME_COLNAME]),
+            pd.Timestamp(first_event[self.END_TIME_COLNAME]),
+        )
 
     def _iter_sensor_particles(self):
         """Yields (sensor, particle, particle_prefix) for the selected sensors and particles"""
@@ -341,6 +497,16 @@ class VDA:
                     f"{self.observer.label} {sensor.upper()}: select one of "
                     f"{', '.join(self.observer.SENSOR_VIEWINGS[sensor])}, or remove its grouped channels"
                 )
+
+    def check_channel_groups(self) -> None:
+        """Raises an error if there are no grouped channels, or a group without channels"""
+        if not any(self.parameters.channel_groups.values()):
+            raise ValueError("No grouped energy channels: add at least one (Energy channels tab, or "
+                             "parameters.channel_groups)")
+        for groups in self.parameters.channel_groups.values():
+            for label, group in groups.items():
+                if not group["channels"]:
+                    raise ValueError(f"The grouped channel {label} has no channels: select its channels, or remove it")
 
     def check_energy_changes(self) -> None:
         """Raises an error if the events are on both sides of a change of the channel energies of a used sensor.
@@ -365,6 +531,8 @@ class VDA:
                 yield sensor, particle, viewing, particle_prefix
 
     def _download_data(self, show_progress: bool = True) -> pd.DataFrame:
+        check_resample_frequency(self.parameters.resample_frequency)
+        self.check_channel_groups()
         self.check_viewings()
         self.check_energy_changes()
         df_rows = []
@@ -433,6 +601,7 @@ class VDA:
         The data are saved to parameters.save_data_filepath, if it is set.
         """
         if self.parameters.load_data_filepath:
+            check_file_exists(self.parameters.load_data_filepath, "Data file")
             self.df_data = pd.read_pickle(self.parameters.load_data_filepath)
             self._check_saved_observer()
             self._use_saved_resample_frequency()
@@ -467,6 +636,7 @@ class VDA:
         return df_grouped
 
     def group_energy_channels(self):
+        self.check_channel_groups()
         self.check_viewings()
         self.check_energy_changes()
         grouped_frames = []
@@ -642,6 +812,11 @@ class VDA:
             ),
         )
 
+    def _require(self, attribute: str, step: str) -> None:
+        """Raises an error if the attribute (e.g. df_grouped) is missing, because the step was not run"""
+        if getattr(self, attribute, None) is None:
+            raise RuntimeError(f"Run the {step} first")
+
     def calculate_onsets(self):
         for name in ("bg_start", "bg_end"):
             if name in self.parameters.onset_method_parameters:
@@ -658,6 +833,7 @@ class VDA:
                 f"Parameters {sorted(given - expected)} are not parameters of the {method} onset method, "
                 f"whose parameters are {sorted(expected)}"
             )
+        self._require("df_grouped", "data step (tool.run_data() in the notebook)")
         self.df_onsets = self._onset_detection_df(
             self.df_grouped,
             self.parameters.onset_method,
@@ -709,6 +885,27 @@ class VDA:
         if self.parameters.view_dfs:
             return self.parameters.selected_onsets
 
+    def onset_counts(self) -> pd.DataFrame:
+        """Number of grouped channels of each event with a determined onset (in any viewing), and in total"""
+        def channels(df: pd.DataFrame) -> pd.Series:
+            # the grouped channels of each event, with an onset in one viewing or more
+            index = df.index.droplevel(["viewing", "prefix"]).unique()
+            return pd.Series(1, index=index).groupby(level=0).sum()
+
+        return pd.DataFrame({
+            "With Onset": channels(self.df_onsets_existing),
+            "Channels": channels(self.df_onsets),
+        }, index=self.df_times.index).fillna(0).astype(int)
+
+    def print_onset_counts(self) -> None:
+        """Prints the number of grouped channels of each event with a determined onset"""
+        for index_event, row in self.onset_counts().iterrows():
+            if row["With Onset"]:
+                print(f"Event {index_event}: onsets in {row['With Onset']} of {row['Channels']} grouped channels")
+            else:
+                print(f"Event {index_event}: no onsets in its {row['Channels']} grouped channels. Check the background "
+                      f"window and the onset parameters, or the data range of the event")
+
     def channel_energy_range(self, sensor, particle, particle_prefix, channel) -> tuple:
         """Returns the (low, high) energy of a grouped channel in MeV"""
         channels = self.parameters.channel_groups[particle][channel]["channels"]
@@ -717,6 +914,7 @@ class VDA:
         return low_energy, high_energy
 
     def construct_energy_channels_characteristics(self):
+        self._require("df_grouped", "data step (tool.run_data() in the notebook)")
         rows = []
         index = []
         for sensor, particle, particle_prefix in self._iter_sensor_particles():
@@ -742,9 +940,7 @@ class VDA:
         """Prepares the Sun-observer distance of the VDA fit (e.g. loads the SPICE kernels of the observer)"""
         self.observer.initialize_position()
 
-    @staticmethod
-    def format_timedelta(td) -> str:
-        return str(pd.Timedelta(td).to_pytimedelta()).split(".")[0]
+    format_timedelta = staticmethod(format_timedelta)
 
     def print_results(self, events=None) -> None:
         """Prints the VDA results of the given event number(s), or of all events if None."""
@@ -756,19 +952,21 @@ class VDA:
         for index_event in events:
             time_start = self.df_times.loc[index_event][self.START_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
             time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
-            print(f"Event {index_event} ({time_start} to {time_end}) | {self.observer.label}")
-            res = self.results.loc[index_event]
-            if pd.isna(res["APL"]):
-                print("    No results (not enough onset points)\n")
-                continue
-            print(f"    Release Time : {res['Release Time']} ± {self.format_timedelta(res['Release Time Error'])}")
-            print(f"    Extra Time   : {self.format_timedelta(res['Extra Time'])}")
-            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f} AU\n")
+            print_fit_results(f"Event {index_event} ({time_start} to {time_end}) | {self.observer.label}",
+                              self.results.loc[index_event],
+                              self.vda_fits.get(index_event, {}).get("warnings", []))
 
     def compute_vda(self):
-        """Fits the VDA line of each event and stores the results in self.results"""
+        """Fits the VDA line of each event and stores the results in self.results.
+
+        The events without onset points at two different energies at least have no fit, and NaN results.
+        """
+        self._require("df_options", "onsets step (tool.run_onsets() in the notebook)")
+        # the results of the events of a previous run are removed
+        self.results = self.results.iloc[0:0]
         self.vda_fits = {}
-        for index_event in self.df_options.index.unique(level=0):
+        selected_onsets = self.parameters.selected_onsets
+        for index_event in self.df_times.index:
             vda_points = []
             # onset times are fitted in seconds from the event start
             t0 = self.df_times.loc[index_event][self.START_TIME_COLNAME].to_pydatetime()
@@ -776,7 +974,9 @@ class VDA:
                 self.observer.distance(self.df_times.loc[index_event][self.START_TIME_COLNAME])
                 / const.c
             ).to(u.s).value
-            for i, row in self.parameters.selected_onsets.loc[index_event].iterrows():
+            event_onsets = (selected_onsets.loc[index_event]
+                            if index_event in selected_onsets.index.get_level_values(0) else selected_onsets.iloc[0:0])
+            for i, row in event_onsets.iterrows():
                 if row["Viewing"] is None:
                     continue
                 sensor, particle, particle_prefix, channel = i
@@ -797,10 +997,7 @@ class VDA:
                     particle)
                 )
 
-            if len(vda_points) < 2:
-                # Not enough points for the linear regression
-                # Consider throughing warning
-                print(f"Not enough onset points in event {index_event}.")
+            if not has_enough_points([p[0] for p in vda_points]):
                 self.results.loc[index_event] = np.nan
                 continue
 
@@ -809,7 +1006,7 @@ class VDA:
             onset_seconds = np.array([p[1] for p in vda_points])
             particles = np.array([p[2] for p in vda_points])
 
-            results, fit = fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, f"event {index_event}")
+            results, fit = fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer)
             self.results.loc[index_event] = results
             self.vda_fits[index_event] = {
                 "t0": t0,
@@ -833,7 +1030,10 @@ class CustomPointsVDA:
     EVENT_NO = 1
     format_timedelta = staticmethod(VDA.format_timedelta)
 
-    def __init__(self, points: pd.DataFrame, distance: float, name: str = "the points"):
+    def __init__(self,
+                 points: pd.DataFrame,
+                 distance: float,
+                 name: str = "the points") -> None:
         self.points = points
         self.distance = distance
         self.name = name
@@ -843,23 +1043,22 @@ class CustomPointsVDA:
     def compute_vda(self) -> None:
         self.results = self.results.iloc[0:0]
         self.vda_fits = {}
-        if len(self.points) < 2:
-            print(f"Not enough onset points in {self.name}.")
-            self.results.loc[self.EVENT_NO] = np.nan
-            return
         points = self.points.assign(**{
             "Inverse Beta": [
                 inverse_beta(mean_energy(row["Low Energy"], row["High Energy"]), row["Particle"])
                 for _, row in self.points.iterrows()
             ]
         }).sort_values("Inverse Beta", kind="stable")
+        if not has_enough_points(points["Inverse Beta"]):
+            self.results.loc[self.EVENT_NO] = np.nan
+            return
         onsets = pd.to_datetime(points["Onset Time"])
         # onset times are fitted in seconds from the earliest onset
         t0 = onsets.min().to_pydatetime()
         onset_seconds = np.array([(onset.to_pydatetime() - t0).total_seconds() for onset in onsets])
         inv_betas = points["Inverse Beta"].to_numpy()
         t_sun_to_observer = (self.distance * u.AU / const.c).to(u.s).value
-        results, fit = fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, self.name)
+        results, fit = fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer)
         self.results.loc[self.EVENT_NO] = results
         self.vda_fits[self.EVENT_NO] = {
             "t0": t0,
@@ -922,6 +1121,7 @@ def read_points_file(filepath: str) -> dict:
 
     Returns {group: CustomPointsVDA}, in the order of the file.
     """
+    check_file_exists(filepath, "Points file")
     df = pd.read_csv(filepath, skipinitialspace=True, dtype=str)
     df.columns = df.columns.str.strip()
     required = [c for c in POINTS_FILE_COLUMNS if c != "Group"]

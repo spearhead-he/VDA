@@ -20,8 +20,9 @@ from pandas.errors import PerformanceWarning
 from sunpy import log as sunpy_log
 
 from . import views
-from .analysis import VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, read_points_file
-from .conf import DEFAULT_DATA_PATH, ONSET_METHOD_LABELS, OnsetSelection, VDA_parameters, channel_group_label
+from .analysis import EARTH, VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, print_fit_results, read_points_file
+from .conf import (DEFAULT_DATA_PATH, ONSET_METHOD_LABELS, RESAMPLE_FREQUENCY_EXAMPLES, OnsetSelection, VDA_parameters,
+                   channel_group_label, check_resample_frequency)
 from .observers import OBSERVERS
 
 
@@ -38,15 +39,9 @@ def _is_connection_error(error) -> bool:
     return any(cls.__name__ in ("ConnectionError", "SSLError", "Timeout", "TimeoutError") for cls in type(error).__mro__)
 
 
-def _print_results(label, res, format_timedelta) -> None:
-    """Prints the results of a VDA fit (a row of VDA.results) under the label"""
-    print(label)
-    if pd.isna(res.get("APL")):
-        print("    No results (not enough onset points)\n")
-        return
-    print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
-    print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
-    print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f} AU\n")
+def _fit_warnings(vda, event_no) -> list[str]:
+    """The warnings of the VDA fit of the event, if it has one"""
+    return vda.vda_fits.get(event_no, {}).get("warnings", [])
 
 
 def _compute_vda(vda) -> None:
@@ -72,7 +67,8 @@ class _NotebookBase:
         self.font_size = 22
         self.legend_font_size = 18
         self.save_plots = True
-        # (label, datetime) reference times shown in the VDA plots, e.g. SXR peak, type II and III radio bursts
+        # reference times shown in the VDA plots, e.g. SXR peak, type II and III radio bursts: (label, datetime,
+        # observer), with the observer "earth", a name of OBSERVERS or its distance from the Sun in AU
         self.reference_times = []
         self._apply_fonts()
 
@@ -99,6 +95,11 @@ class _NotebookBase:
     # where the reference times are shown, in the title of their section
     _REFERENCE_TIMES_PLOTS = "in the VDA plots"
     _SAVE_PLOTS_DESCRIPTION = "Save the VDA plots as .png files"
+    REFERENCE_TIMES_NOTE = ("Enter the times as observed, and their observer or its distance from the Sun (a distance "
+                            "above 0 is used instead of the observer). They are shown at the Sun, where the VDA fits "
+                            "meet inverse beta 0: the observed time minus the light travel time from the Sun to the "
+                            "observer.")
+    _REFERENCE_OBSERVERS = [("Earth", EARTH)] + [(observer.label, name) for name, observer in OBSERVERS.items()]
 
     def _plots_tab(self):
         return widgets.VBox(self._plots_sections())
@@ -128,7 +129,7 @@ class _NotebookBase:
         return [
             self._section("Plots", wgt_font, wgt_legend_font, wgt_save),
             self._section(f"Reference times (shown at inverse beta 0 {self._REFERENCE_TIMES_PLOTS})",
-                          self._reference_times_widget()),
+                          self._note(self.REFERENCE_TIMES_NOTE), self._reference_times_widget()),
         ]
 
     def _reference_times_widget(self):
@@ -137,21 +138,26 @@ class _NotebookBase:
         wrapper_rows = widgets.VBox()
 
         def set_reference_value(i, j, value):
-            reference = list(references[i])
+            reference = list(references[i]) + [EARTH] * (3 - len(references[i]))
             reference[j] = value
             references[i] = tuple(reference)
+
+        def set_observer(i, wgt_observer, wgt_distance):
+            # a distance above 0 is used instead of the observer
+            set_reference_value(i, 2, wgt_distance.value if wgt_distance.value > 0 else wgt_observer.value)
 
         def remove_reference(i):
             del references[i]
             show_rows()
 
         def add_reference(_):
-            references.append((f"Reference {len(references) + 1}", self._default_reference_time()))
+            references.append((f"Reference {len(references) + 1}", self._default_reference_time(), EARTH))
             show_rows()
 
         def show_rows():
             rows = []
-            for i, (label, time) in enumerate(references):
+            for i, (label, time, *observer) in enumerate(references):
+                observer = observer[0] if observer else EARTH
                 wgt_label = widgets.Text(value=label, description="Label:", style=self._style)
                 wgt_label.observe(lambda traitlet, i=i: set_reference_value(i, 0, traitlet["new"]), names="value")
                 wgt_time = widgets.widget_datetime.NaiveDatetimePicker(
@@ -161,9 +167,18 @@ class _NotebookBase:
                     layout=self._layout,
                 )
                 wgt_time.observe(lambda traitlet, i=i: set_reference_value(i, 1, traitlet["new"]), names="value")
+                is_distance = isinstance(observer, (int, float))
+                wgt_observer = widgets.Dropdown(options=self._REFERENCE_OBSERVERS,
+                                                value=EARTH if is_distance else observer,
+                                                description="Observed from:", style=self._style)
+                wgt_distance = widgets.BoundedFloatText(value=observer if is_distance else 0, min=0, max=100, step=0.01,
+                                                        description="or distance (AU):", style=self._style,
+                                                        layout=widgets.Layout(width="190px"))
+                for wgt in (wgt_observer, wgt_distance):
+                    wgt.observe(lambda _, i=i, o=wgt_observer, d=wgt_distance: set_observer(i, o, d), names="value")
                 btn_remove = widgets.Button(description="Remove", tooltip=f"Remove {label}")
                 btn_remove.on_click(lambda _, i=i: remove_reference(i))
-                rows.append(widgets.HBox([wgt_label, wgt_time, btn_remove]))
+                rows.append(widgets.HBox([wgt_label, wgt_time, wgt_observer, wgt_distance, btn_remove]))
             wrapper_rows.children = rows
 
         btn_add = widgets.Button(description="Add Reference Time")
@@ -356,9 +371,7 @@ class VDA_notebook(_NotebookBase):
         return widgets.VBox([
             self._section("Observer", self._observer_widget()),
             self._section("Viewings", self._wrapper_viewings),
-            self._section("Resampling", self._text_widget(
-                "resample_frequency", "Resample frequency:",
-                "Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling")),
+            self._section("Resampling", self._resample_frequency_widget()),
             self._section("Downloaded data", self._data_path_widget()),
             self._section("Advanced: load previously saved data, or save the data",
                           self._text_widget("load_data_filepath", "Load the data from:",
@@ -366,6 +379,23 @@ class VDA_notebook(_NotebookBase):
                           self._text_widget("save_data_filepath", "Save the data to:",
                                             "Path to .pkl - Leave blank to not save the data")),
         ])
+
+    def _resample_frequency_widget(self) -> widgets.VBox:
+        """The resample frequency, with an error shown while it is not a pandas offset alias"""
+        w = self._text_widget("resample_frequency", "Resample frequency:",
+                              f"Pandas offset alias ({RESAMPLE_FREQUENCY_EXAMPLES}) - Leave blank for no resampling")
+        wgt_error = widgets.HTML()
+
+        def check(_=None) -> None:
+            try:
+                check_resample_frequency(w.value)
+                wgt_error.value = ""
+            except ValueError as e:
+                wgt_error.value = self._error_text(str(e))
+
+        w.observe(check, names="value")
+        check()
+        return widgets.VBox([w, wgt_error])
 
     def _data_path_widget(self) -> widgets.Text:
         return self._text_widget("data_path", "Data folder:",
@@ -430,6 +460,8 @@ class VDA_notebook(_NotebookBase):
         # without data, the channels are listed without their energy ranges
         self.vda.df_energies = None
         error = ""
+        print(f"Reading the energy ranges of the {self.vda.observer.label} channels from the data of the first event "
+              f"({start:%Y-%m-%d}), downloaded if needed")
         try:
             self.vda.construct_energies_df(start, end)
         except Exception as e:
@@ -587,7 +619,7 @@ class VDA_notebook(_NotebookBase):
         for parameter, pinfo in self.parameters.AVAILABLE_ONSET_METHODS[self.parameters.onset_method].items():
             widget_params = {
                 "value": self.parameters.onset_method_parameters.get(parameter, pinfo["default"]),
-                "description": f'{parameter} | {pinfo["description"]}',
+                "description": f"{parameter}: {pinfo['description']}",
                 "style": self._style,
                 "layout": self._layout,
             }
@@ -658,16 +690,17 @@ class VDA_notebook(_NotebookBase):
     def _event_references(self, vda, event_no):
         """The reference times inside the data range of the event"""
         start, end = vda.df_times.loc[event_no, [vda.START_TIME_COLNAME, vda.END_TIME_COLNAME]]
-        return [(label, time) for label, time in self.reference_times
-                if time is not None and start <= pd.Timestamp(time) <= end]
+        return [reference for reference in self.reference_times
+                if reference[1] is not None and start <= pd.Timestamp(reference[1]) <= end]
 
     ############### Analysis steps ###############
     def run_data(self):
         """Creates the events, downloads (or loads) their data and groups the energy channels"""
         self.vda.construct_times_df()
         self._show(self.vda.df_times)
-        if getattr(self.vda, "df_energies", None) is None:
-            # not read by the parameters form, e.g. without data for its spacecraft and first event
+        if self.vda.energies_need_update():
+            # not read by the parameters form (e.g. without data for its first event), or read from another first
+            # event (the events were changed after the form was shown) or spacecraft
             self.vda.construct_energies_df()
         self.vda.construct_particles_df()
         self.vda.group_energy_channels()
@@ -676,6 +709,7 @@ class VDA_notebook(_NotebookBase):
     def background_selection(self):
         """Plot of the selected event with a slider to choose its background window"""
         vda = self.vda
+        vda._require("df_grouped", "data step (tool.run_data())")
         out_plot = widgets.Output()
         wgt_status = widgets.HTML()
         wgt_event = widgets.Dropdown(
@@ -750,6 +784,7 @@ class VDA_notebook(_NotebookBase):
         self.vda.construct_options_df()
         self._show(self.vda.df_onsets_existing)
         self.vda.select_onsets()
+        self.vda.print_onset_counts()
 
     def run_onsets(self):
         """Determines the onsets and selects the ones used for the VDA (interactively, if selected)"""
@@ -857,10 +892,11 @@ class VDA_notebook(_NotebookBase):
     def run_vda(self):
         """Fits the VDA line of each event, prints the results and plots them"""
         _compute_vda(self.vda)
-        for event_no in self.vda.vda_fits:
+        for event_no in self.vda.df_times.index:
             self.vda.print_results(event_no)
-            filename = views.vda_plot_filename(self.vda, event_no) if self.save_plots else None
-            _show_figure(views.plot_vda(self.vda, event_no, filename, self._event_references(self.vda, event_no)))
+            if event_no in self.vda.vda_fits:
+                filename = views.vda_plot_filename(self.vda, event_no) if self.save_plots else None
+                _show_figure(views.plot_vda(self.vda, event_no, filename, self._event_references(self.vda, event_no)))
         self._show(self.vda.results)
 
 
@@ -983,9 +1019,7 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
             self._settings[name] = widgets.VBox([
                 notebook._observer_error,
                 self._section("Viewings", notebook._wrapper_viewings),
-                self._section("Resampling", notebook._text_widget(
-                    "resample_frequency", "Resample frequency:",
-                    "Valid offset aliases string (e.g. 5min, 5T, etc) - Leave blank for no resampling")),
+                self._section("Resampling", notebook._resample_frequency_widget()),
                 notebook._channels_tab(),
             ])
         return self._settings[name]
@@ -1059,8 +1093,7 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
         """Determines the onsets of each spacecraft and selects the ones used for the VDA (interactively, if selected)"""
         self._check_analyses()
         for name, notebook in self.analyses.items():
-            if self.parameters.view_dfs:
-                print(f"{self._label(name)}:")
+            print(f"{self._label(name)}:")
             notebook._determine_onsets()
         if self.parameters.onset_selection == OnsetSelection.INTERACTIVE:
             return self._per_spacecraft(lambda notebook: notebook.onset_selection())
@@ -1073,19 +1106,20 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
             _compute_vda(notebook.vda)
             vdas[self._label(name)] = notebook.vda
         self.results = pd.DataFrame(
-            [vda.results.loc[1] if 1 in vda.results.index else pd.Series(dtype=object) for vda in vdas.values()],
+            [vda.results.loc[1] for vda in vdas.values()],
             index=pd.Index(list(vdas), name="Spacecraft"),
         )
         for label, vda in vdas.items():
-            _print_results(label, self.results.loc[label], vda.format_timedelta)
+            print_fit_results(label, self.results.loc[label], _fit_warnings(vda, 1))
         references = self._event_references(next(iter(vdas.values())), 1)
         if self.show_spacecraft_plots:
             for name, notebook in self.analyses.items():
                 if 1 in notebook.vda.vda_fits:
                     filename = f"{name}_{views.vda_plot_filename(notebook.vda, 1)}" if self.save_plots else None
                     _show_figure(views.plot_vda(notebook.vda, 1, filename, references))
-        filename = views.vda_combined_plot_filename(vdas) if self.save_plots else None
-        _show_figure(views.plot_vda_combined(vdas, 1, filename, references))
+        if any(1 in vda.vda_fits for vda in vdas.values()):
+            filename = views.vda_combined_plot_filename(vdas) if self.save_plots else None
+            _show_figure(views.plot_vda_combined(vdas, 1, filename, references))
         self._show(self.results)
 
 
@@ -1305,8 +1339,10 @@ class VDA_custom_points_notebook(_NotebookBase):
         self.results = pd.DataFrame([vda.results.loc[CustomPointsVDA.EVENT_NO] for vda in self.vdas.values()],
                                     index=pd.Index(list(self.vdas), name="Group"))
         for label, vda in self.vdas.items():
-            _print_results(label, self.results.loc[label], vda.format_timedelta)
+            print_fit_results(label, self.results.loc[label], _fit_warnings(vda, CustomPointsVDA.EVENT_NO))
+        if not any(vda.vda_fits for vda in self.vdas.values()):
+            return
         filename = views.custom_points_plot_filename(self.vdas) if self.save_plots else None
-        references = [(label, time) for label, time in self.reference_times if time is not None]
+        references = [reference for reference in self.reference_times if reference[1] is not None]
         _show_figure(views.plot_vda_combined(self.vdas, CustomPointsVDA.EVENT_NO, filename, references,
                                              self.title or None))

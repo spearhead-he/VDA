@@ -13,8 +13,13 @@ Modules:
   VDA_multi_spacecraft_notebook and VDA_custom_points_notebook (needs the notebook dependencies)
 - notebooks: download of the notebooks and their example files (the command spearhead-vda-notebooks)
 """
-from .analysis import VDA
-from .conf import OnsetSelection, VDA_parameters
+import logging
+
+# drms (imported by the data loaders) sets the root logger to INFO, so spiceypy would log the library it loads on import
+logging.getLogger("spiceypy").setLevel(logging.WARNING)
+
+from .analysis import VDA  # noqa: E402
+from .conf import OnsetSelection, VDA_parameters  # noqa: E402
 
 __version__ = "1.1.0"
 

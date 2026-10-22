@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from spearhead.vda import OnsetSelection, VDA_parameters
-from spearhead.vda.conf import DEFAULT_DATA_PATH
+from spearhead.vda.conf import DEFAULT_DATA_PATH, check_resample_frequency
 from tests.helpers import make_vda
 
 
@@ -79,3 +79,19 @@ def test_default_channel_groups():
 
 def test_default_data_path():
     assert VDA_parameters().data_path == DEFAULT_DATA_PATH == "particle_data"
+
+
+@pytest.mark.parametrize("frequency", ["", "5min", "30s", "1h"])
+def test_valid_resample_frequency(frequency):
+    check_resample_frequency(frequency)
+
+
+@pytest.mark.parametrize("frequency", ["5 minutes", "5", "five"])
+def test_invalid_resample_frequency(frequency):
+    with pytest.raises(ValueError, match=f"Invalid resample frequency '{frequency}': use a pandas offset alias "
+                                         r"\(e.g. 5min, 30s or 1h\), or leave it blank for no resampling"):
+        check_resample_frequency(frequency)
+
+
+def test_intermediate_tables_not_displayed_by_default():
+    assert VDA_parameters().view_dfs is False

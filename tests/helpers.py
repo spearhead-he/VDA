@@ -1,6 +1,7 @@
 """Helpers of the tests: parameters, files and data without downloads, and figures for image comparison"""
 import numpy as np
 import pandas as pd
+from matplotlib.legend import Legend
 
 from spearhead.vda import VDA, VDA_parameters
 from spearhead.vda.observers import ParticleData
@@ -70,7 +71,28 @@ def strip_figure_text(fig):
         leg = ax.get_legend()
         if leg:
             leg.remove()
+        for table in ax.tables:
+            for cell in table.get_celld().values():
+                cell.get_text().set_text('')
     return fig
+
+
+def legend_texts(ax) -> list[str]:
+    """Texts of the legend of the axes"""
+    return [text.get_text() for text in ax.get_legend().get_texts()]
+
+
+def reference_legend(ax):
+    """The legend of the reference times inside a VDA plot, or None"""
+    return next((artist for artist in ax.artists if isinstance(artist, Legend)), None)
+
+
+def table_rows(fig) -> list[list[str]]:
+    """Texts of the results table under a VDA plot, starting with the column names"""
+    cells = fig.axes[1].tables[0].get_celld()
+    n_rows = max(row for row, _ in cells) + 1
+    n_columns = max(column for _, column in cells) + 1
+    return [[cells[row, column].get_text().get_text() for column in range(n_columns)] for row in range(n_rows)]
 
 
 def rising_observer_load(self, sensor, startdate, enddate, viewing, path, particles=None):

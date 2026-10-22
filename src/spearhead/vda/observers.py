@@ -11,7 +11,9 @@ OBSERVERS holds the available observers by name, the values of VDA_parameters.ob
 """
 import os
 import re
+import shutil
 from typing import NamedTuple
+from urllib.request import urlopen
 
 import numpy as np
 import pandas as pd
@@ -21,8 +23,44 @@ from seppy.loader.soho import soho_load
 from seppy.loader.stereo import stereo_load
 from seppy.loader.wind import wind3dp_load
 from sunpy.coordinates import get_horizons_coord, spice
-from sunpy.data import cache
+from sunpy.data import CACHE_DIR
+from sunpy.data.data_manager.cache import Cache
+from sunpy.data.data_manager.downloader import DownloaderBase, DownloaderError
+from sunpy.data.data_manager.storage import SqliteStorage
 from solo_epd_loader import epd_load
+
+
+class _QuietDownloader(DownloaderBase):
+    """Downloader of the sunpy cache without progress bars.
+
+    The default downloader (parfive) runs its event loop in a thread in Jupyter, and prints a progress bar per file
+    and "Exception ignored ... signal only works in main thread" tracebacks when the loop is closed.
+    """
+
+    def download(self,
+                 url: str,
+                 path: str,
+                 overwrite: bool = True) -> None:
+        # overwrite is passed by the cache of some sunpy builds
+        if not overwrite and os.path.exists(path):
+            return
+        try:
+            with urlopen(url, timeout=60) as response, open(path, "wb") as f:
+                shutil.copyfileobj(response, f)
+        except OSError as e:
+            raise DownloaderError(e) from e
+
+
+# The files of the sunpy cache (e.g. the SPICE kernels), downloaded once: they have versions in their names
+_cache_storage = SqliteStorage(f"{CACHE_DIR}/cache.db")
+_cache = Cache(_QuietDownloader(), _cache_storage, CACHE_DIR, expiry=None)
+
+
+def download_once(urls: list[str], description: str) -> list:
+    """Paths of the files of the urls in the sunpy cache, downloaded if they are not there yet"""
+    if any(_cache_storage.find_by_key("url", url) is None for url in urls):
+        print(f"Downloading the {description} (only once)")
+    return [_cache.download(url) for url in urls]
 
 
 class ParticleData(NamedTuple):
@@ -185,7 +223,8 @@ class SolarOrbiter(Observer):
         return data
 
     def initialize_position(self) -> None:
-        spice.initialize([cache.download(f"{self.SPICE_KERNELS_URL}/{kernel}") for kernel in self.SPICE_KERNELS])
+        spice.initialize(download_once([f"{self.SPICE_KERNELS_URL}/{kernel}" for kernel in self.SPICE_KERNELS],
+                                       f"{self.label} SPICE kernels"))
 
     def distance(self, time):
         return spice.get_body("Solar Orbiter", time, spice_frame="SOLO_HEEQ").distance

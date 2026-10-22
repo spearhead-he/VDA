@@ -27,14 +27,14 @@ AVAILABLE_ONSET_METHODS = {
             "min": 1,
             "max": 5,
             "default": 3,
-            "description": "Threshold (<this parameter>*<standard deviation>):",
+            "description": "threshold in standard deviations above the background mean",
         },
         "n": {
             "type": int,
             "min": 1,
             "max": 5,
             "default": 3,
-            "description": "Number of consecutive points that should cross the threshold:",
+            "description": "number of consecutive points above the threshold",
         },
     },
     # Poisson-CUSUM method of pyonset
@@ -44,14 +44,14 @@ AVAILABLE_ONSET_METHODS = {
             "min": 5,
             "max": 120,
             "default": 30,
-            "description": "Minutes the CUSUM function should stay above its threshold:",
+            "description": "minutes the CUSUM function must stay above its threshold",
         },
         "sigma_multiplier": {
             "type": int,
             "min": 1,
             "max": 5,
             "default": 2,
-            "description": "μd = background mean + <this parameter>*<standard deviation>:",
+            "description": "μd = background mean + sigma_multiplier standard deviations",
         },
     },
 }
@@ -60,6 +60,9 @@ ONSET_METHOD_LABELS = {
     "sigma": "Sigma threshold",
     "poisson_cusum": "Poisson-CUSUM",
 }
+
+# Example offset aliases of the resample frequency, for the messages and the form
+RESAMPLE_FREQUENCY_EXAMPLES = "e.g. 5min, 30s or 1h"
 
 # Default folder of the downloaded data files, in the current directory
 DEFAULT_DATA_PATH = "particle_data"
@@ -77,6 +80,17 @@ REMOVED_PARAMETERS = {
     "save_data": ("v0.4.0", "Set save_data_filepath to the file to save the data to, or leave it empty to not save them."),
     "default_channel_groups": ("v0.5.0", "The default grouped channels are the default value of channel_groups."),
 }
+
+
+def check_resample_frequency(frequency: str) -> None:
+    """Raises an error if the resample frequency is not a pandas offset alias (an empty one means no resampling)"""
+    if not frequency:
+        return
+    try:
+        pd.tseries.frequencies.to_offset(frequency)
+    except ValueError:
+        raise ValueError(f"Invalid resample frequency {frequency!r}: use a pandas offset alias "
+                         f"({RESAMPLE_FREQUENCY_EXAMPLES}), or leave it blank for no resampling") from None
 
 
 def channel_group_label(sensor: str, particle: str, number: int) -> str:
@@ -131,7 +145,8 @@ class VDA_parameters:
     onset_selection: OnsetSelection = OnsetSelection.USE_ALL
     # Selected viewing of each grouped channel, set by the onset selection
     selected_onsets: pd.DataFrame | None = field(default=None, repr=False, compare=False)
-    view_dfs: bool = True
+    # Display of the intermediate tables in the notebook
+    view_dfs: bool = False
 
     AVAILABLE_ONSET_METHODS: ClassVar[dict] = AVAILABLE_ONSET_METHODS
 

@@ -9,9 +9,10 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
+from matplotlib.collections import PathCollection
 
-from spearhead.vda import observers, views
-from tests.helpers import make_vda
+from spearhead.vda import analysis, observers, views
+from tests.helpers import legend_texts, make_vda, reference_legend, table_rows
 
 
 class FixedDistance:
@@ -85,8 +86,10 @@ def test_vda_fit_independent_of_local_timezone(fixed_spacecraft_distance):
 def test_vda_fit_needs_two_points(fixed_spacecraft_distance, capsys):
     v = vda_with_onsets(["2021-10-31 03:20"])
     v.compute_vda()
-    assert "Not enough onset points in event 1" in capsys.readouterr().out
-    assert pd.isna(v.results.loc[1, "APL"])
+    assert pd.isna(v.results.loc[1, "APL"]) and v.vda_fits == {}
+    v.print_results(1)
+    assert "No results (not enough onset points: they are needed at two different energies at least)" \
+        in capsys.readouterr().out
 
 
 def test_vda_points_of_protons_and_electrons(fixed_spacecraft_distance):
@@ -102,8 +105,11 @@ def test_vda_points_of_protons_and_electrons(fixed_spacecraft_distance):
     fig = views.plot_vda(v, 1)
     # the title names the spacecraft
     assert fig.get_suptitle() == "Event 1 (2021-10-31) | Solar Orbiter"
-    points = {c.get_label(): len(c.get_offsets()) for c in fig.axes[0].collections}
-    assert points["Protons"] == 2 and points["Electrons"] == 2
+    # the points in black, the release time at the Sun as an open circle at inverse beta 0
+    points = [c for c in fig.axes[0].collections if len(c.get_offsets()) and c.get_offsets()[0][0] != 0]
+    assert [len(c.get_offsets()) for c in points] == [2, 2]
+    assert [c.get_paths()[0] for c in points] != [points[0].get_paths()[0]] * 2
+    assert legend_texts(fig.axes[0])[:2] == ["Protons", "Electrons"]
     plt.close(fig)
 
 
@@ -112,19 +118,166 @@ def test_vda_plot_reference_times(fixed_spacecraft_distance):
     v.compute_vda()
     times = pd.date_range("2021-10-31 02:00", periods=2, freq="min")
     v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], times]))
-    references = [("SXR peak", datetime(2021, 10, 31, 2, 50)), ("type II", pd.Timestamp("2021-10-31 02:55"))]
+    references = [("SXR peak", datetime(2021, 10, 31, 2, 50)), ("type II", pd.Timestamp("2021-10-31 03:00"), 0.5)]
     ax = views.plot_vda(v, 1, references=references).axes[0]
-    # the reference times at inverse beta 0, with different markers, and the fit line extended to it
-    points = {c.get_label(): c for c in ax.collections if c.get_label() in ("SXR peak", "type II")}
-    assert list(points) == ["SXR peak", "type II"]
+    # the reference times at inverse beta 0 at the Sun, with different markers, and their times in the legend
+    labels = ["SXR peak: 02:41:44 (02:50:00 at Earth)", "type II: 02:55:50 (03:00:00 at 0.50 AU)"]
+    points = {c.get_label(): c for c in ax.collections if c.get_label() in labels}
+    assert list(points) == labels
     assert all(c.get_offsets()[0][0] == 0 for c in points.values())
-    assert mdates.num2date(points["type II"].get_offsets()[0][1]).replace(tzinfo=None) == datetime(2021, 10, 31, 2, 55)
-    assert points["SXR peak"].get_paths()[0] != points["type II"].get_paths()[0]
-    fit_line = [line for line in ax.get_lines() if line.get_label() == "Linear Regression"][0]
-    assert fit_line.get_xdata()[0] == 0
+    type_ii = mdates.num2date(points[labels[1]].get_offsets()[0][1]).replace(tzinfo=None)
+    assert abs(type_ii - datetime(2021, 10, 31, 2, 55, 50, 497611)) < timedelta(milliseconds=1)
+    assert points[labels[0]].get_paths()[0] != points[labels[1]].get_paths()[0]
     assert ax.get_xlim()[0] == 0
-    assert "SXR peak" in [t.get_text() for t in ax.get_legend().get_texts()]
-    # without reference times, the fit line starts at the first point
-    ax = views.plot_vda(v, 1).axes[0]
-    assert [line for line in ax.get_lines() if line.get_label() == "Linear Regression"][0].get_xdata()[0] == 1
+    assert [t.get_text() for t in reference_legend(ax).get_texts()] == labels
+    # without reference times, no legend of them
+    assert reference_legend(views.plot_vda(v, 1).axes[0]) is None
     plt.close("all")
+
+
+def test_vda_plot_from_the_release_at_the_sun(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00"])
+    v.compute_vda()
+    v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], pd.date_range("2021-10-31 02:00", periods=2)]))
+    ax = views.plot_vda(v, 1).axes[0]
+    # the fit line from inverse beta 0, where an open circle marks the release time at the Sun
+    fit_line = ax.get_lines()[0]
+    assert fit_line.get_xdata()[0] == 0 and ax.get_xlim()[0] == 0
+    at_sun = analysis.release_times(v.vda_fits[1])[0]
+    release = [c for c in ax.collections if isinstance(c, PathCollection) and c.get_offsets()[0][0] == 0][0]
+    for plotted in (mdates.num2date(release.get_offsets()[0][1]).replace(tzinfo=None), fit_line.get_ydata()[0]):
+        assert abs(plotted - at_sun.to_pydatetime()) < timedelta(seconds=1)
+    plt.close("all")
+
+
+def test_release_times_at_the_sun_and_at_1_au(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00", "2021-10-31 04:21"])
+    v.compute_vda()
+    fit = v.vda_fits[1]
+    at_sun, at_au = analysis.release_times(fit)
+    assert at_sun == pd.Timestamp(fit["t0"]) + pd.Timedelta(seconds=fit["b"])
+    # the light travel time over 1 AU, 8 min 19 s
+    assert (at_au - at_sun).total_seconds() == pytest.approx(499.005, abs=1e-3)
+    # the printed release time is the time at the Sun plus the light travel time to the spacecraft
+    res = v.results.loc[1]
+    assert pd.Timestamp(res["Release Time"]) - res["Extra Time"] == pytest.approx(at_sun, abs=pd.Timedelta(seconds=1))
+
+
+def test_vda_fit_of_two_points_has_no_errors(fixed_spacecraft_distance, capsys):
+    # the line goes through both points: the errors cannot be estimated
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40"])
+    v.compute_vda()
+    result = v.results.loc[1]
+    assert result["Release Time"] == (datetime(2021, 10, 31, 3) + timedelta(seconds=fixed_spacecraft_distance)
+                                      ).strftime("%Y-%m-%d %H:%M:%S")
+    assert pd.isna(result["Release Time Error"]) and pd.isna(result["APL Error"])
+    v.print_results(1)
+    out = capsys.readouterr().out
+    assert "(+0:06:39) ± n/a" in out and " ± n/a\n" in out
+    v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], pd.date_range("2021-10-31 02:00", periods=3)]))
+    fig = views.plot_vda(v, 1)
+    # no band of the error
+    assert "2σ band of the fit" not in fig.axes[0].get_legend_handles_labels()[1]
+    plt.close(fig)
+
+
+def test_vda_fit_needs_two_energies(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40"])
+    v.df_channels_chars["Inverse Beta"] = 2.0
+    v.compute_vda()
+    assert pd.isna(v.results.loc[1, "APL"]) and v.vda_fits == {}
+
+
+@pytest.mark.parametrize("onsets, warning", [
+    # later onsets at the higher energies
+    (["2021-10-31 04:20", "2021-10-31 04:00", "2021-10-31 03:40"], "the APL is not positive"),
+    # the line crosses inverse beta 0 at 03:50, after the earliest onset (03:40)
+    (["2021-10-31 04:00", "2021-10-31 04:10", "2021-10-31 03:40", "2021-10-31 04:30"],
+     "the release at the Sun is after the earliest onset"),
+])
+def test_vda_fit_warnings(fixed_spacecraft_distance, capsys, onsets, warning):
+    v = vda_with_onsets(onsets)
+    v.compute_vda()
+    assert len(v.vda_fits[1]["warnings"]) == 1 and v.vda_fits[1]["warnings"][0].startswith(warning)
+    v.print_results(1)
+    assert f"    Warning: {warning}" in capsys.readouterr().out
+
+
+def test_vda_fit_without_warnings(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00", "2021-10-31 04:20"])
+    v.compute_vda()
+    assert v.vda_fits[1]["warnings"] == []
+
+
+def test_printed_release_time_with_the_light_travel_time(fixed_spacecraft_distance, capsys):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00", "2021-10-31 04:21"])
+    v.compute_vda()
+    v.print_results(1)
+    out = capsys.readouterr().out
+    release = v.results.loc[1, "Release Time"]
+    assert f"    Release Time : {release} (+0:06:39) ± 0:00:" in out
+    assert "    Extra Time   : 0:06:39 (light travel time from the Sun)" in out
+    v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], pd.date_range("2021-10-31 02:00", periods=3)]))
+    fig = views.plot_vda(v, 1)
+    assert "2σ band" in legend_texts(fig.axes[0])
+    assert table_rows(fig)[1][3].startswith("± 0:00:")
+    plt.close(fig)
+
+
+def test_vda_results_of_the_events_of_the_last_run(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00"])
+    v.results.loc[2] = v.results.columns.map(lambda c: None)
+    v.compute_vda()
+    assert v.results.index.tolist() == [1]
+
+
+def test_vda_steps_in_order():
+    v = make_vda()
+    with pytest.raises(RuntimeError, match=r"Run the onsets step \(tool.run_onsets\(\) in the notebook\) first"):
+        v.compute_vda()
+    with pytest.raises(RuntimeError, match=r"Run the data step \(tool.run_data\(\) in the notebook\) first"):
+        v.calculate_onsets()
+    with pytest.raises(RuntimeError, match="Run the data step"):
+        v.construct_energy_channels_characteristics()
+
+
+def test_release_time_text():
+    res = pd.Series({"Release Time": "2021-10-28 15:26:11", "Release Time Error": timedelta(minutes=3, seconds=38.9),
+                     "Extra Time": timedelta(minutes=6, seconds=40.9), "APL": 1.76, "APL Error": 0.12})
+    assert analysis.format_release_time(res) == "2021-10-28 15:26:11 (+0:06:40) ± 0:03:38"
+    assert analysis.format_release_time(res, "%H:%M:%S") == "15:26:11 (+0:06:40) ± 0:03:38"
+    assert analysis.format_error(0.123) == "0.12" and analysis.format_error(float("nan")) == "n/a"
+    assert analysis.format_timedelta(pd.NaT) == "n/a"
+
+
+# ---------------------------------------------------------------- reference times
+
+def test_reference_time_at_sun_observed_at_earth():
+    # Earth at 0.9926 AU on 2021-10-28: 8 min 15.8 s of light travel time
+    reference = analysis.reference_time_at_sun(("SXR peak", datetime(2021, 10, 28, 15, 35)))
+    assert reference.label == "SXR peak" and reference.observer == "Earth"
+    assert reference.observed == pd.Timestamp("2021-10-28 15:35")
+    assert (reference.observed - reference.at_sun).total_seconds() == pytest.approx(495.75, abs=0.1)
+    assert analysis.reference_time_at_sun(("SXR peak", datetime(2021, 10, 28, 15, 35), "earth")) == reference
+
+
+def test_reference_time_at_sun_of_a_distance_and_a_spacecraft(monkeypatch):
+    reference = analysis.reference_time_at_sun(("type III", "2021-10-28 15:35", 0.5))
+    assert reference.observer == "0.50 AU"
+    assert (reference.observed - reference.at_sun).total_seconds() == pytest.approx(0.5 * 499.005, abs=1e-3)
+    # the distance of a spacecraft at the observed time
+    times = []
+    monkeypatch.setattr(observers.StereoA, "distance", lambda self, time: times.append(time) or 0.96 * u.AU)
+    reference = analysis.reference_time_at_sun(("type III", datetime(2021, 10, 28, 15, 35), "sta"))
+    assert reference.observer == "STEREO-A" and times == [pd.Timestamp("2021-10-28 15:35")]
+    assert (reference.observed - reference.at_sun).total_seconds() == pytest.approx(0.96 * 499.005, abs=1e-3)
+
+
+@pytest.mark.parametrize("observer, message", [
+    (0, "Invalid distance of the observer: 0 AU. It must be positive"),
+    (-1.0, "Invalid distance of the observer: -1.0 AU"),
+    ("goes", "Unknown observer 'goes': use 'earth', one of 'solo', 'sta', 'psp', 'soho', 'wind', 'bepi', or a distance"),
+])
+def test_reference_time_at_sun_invalid_observer(observer, message):
+    with pytest.raises(ValueError, match=message):
+        analysis.reference_time_at_sun(("SXR peak", datetime(2021, 10, 28, 15, 35), observer))
