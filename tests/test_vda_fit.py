@@ -155,9 +155,13 @@ def test_release_times_at_the_sun_and_at_1_au(fixed_spacecraft_distance):
     v.compute_vda()
     fit = v.vda_fits[1]
     at_sun, at_au = analysis.release_times(fit)
-    assert at_sun == pd.Timestamp(fit["t0"]) + pd.Timedelta(seconds=fit["b"])
+    # to the microsecond
+    assert abs(at_sun - (pd.Timestamp(fit["t0"]) + pd.Timedelta(seconds=fit["b"]))) <= pd.Timedelta(microseconds=1)
+    assert at_sun == at_sun.round("us")
     # the light travel time over 1 AU, 8 min 19 s
     assert (at_au - at_sun).total_seconds() == pytest.approx(499.005, abs=1e-3)
+    # a fit through 03:00:00 at inverse beta 0 is shown as 03:00:00, not 02:59:59
+    assert analysis.release_times({"t0": datetime(2021, 10, 31, 2), "b": 3599.9999999})[0] == pd.Timestamp("2021-10-31 03:00")
     # the printed release time is the time at the Sun plus the light travel time to the spacecraft
     res = v.results.loc[1]
     assert pd.Timestamp(res["Release Time"]) - res["Extra Time"] == pytest.approx(at_sun, abs=pd.Timedelta(seconds=1))
@@ -173,7 +177,7 @@ def test_vda_fit_of_two_points_has_no_errors(fixed_spacecraft_distance, capsys):
     assert pd.isna(result["Release Time Error"]) and pd.isna(result["APL Error"])
     v.print_results(1)
     out = capsys.readouterr().out
-    assert "(+0:06:39) ± n/a" in out and " ± n/a\n" in out
+    assert "    Release at the Sun : 2021-10-31 03:00:00 ± n/a\n" in out and " ± n/a AU\n" in out
     v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], pd.date_range("2021-10-31 02:00", periods=3)]))
     fig = views.plot_vda(v, 1)
     # no band of the error
@@ -214,9 +218,15 @@ def test_printed_release_time_with_the_light_travel_time(fixed_spacecraft_distan
     v.compute_vda()
     v.print_results(1)
     out = capsys.readouterr().out
-    release = v.results.loc[1, "Release Time"]
-    assert f"    Release Time : {release} (+0:06:39) ± 0:00:" in out
-    assert "    Extra Time   : 0:06:39 (light travel time from the Sun)" in out
+    res = v.results.loc[1]
+    # the release time at the Sun and its error first, then the times its light reaches 1 AU and the spacecraft
+    assert out.splitlines()[1:5] == [
+        f"    Release at the Sun : {res['Release Time (Sun)']} ± {analysis.format_timedelta(res['Release Time Error'])}",
+        f"    At 1 AU            : {res['Release Time (1 AU)']}",
+        f"    At the spacecraft  : {res['Release Time']} (+0:06:39 light travel time from the Sun)",
+        f"    APL                : {res['APL']:.2f} ± {res['APL Error']:.2f} AU",
+    ]
+    assert " ± 0:00:" in out.splitlines()[1]
     v.df_grouped = pd.DataFrame(index=pd.MultiIndex.from_product([[1], pd.date_range("2021-10-31 02:00", periods=3)]))
     fig = views.plot_vda(v, 1)
     assert "2σ band" in legend_texts(fig.axes[0])
@@ -281,3 +291,17 @@ def test_reference_time_at_sun_of_a_distance_and_a_spacecraft(monkeypatch):
 def test_reference_time_at_sun_invalid_observer(observer, message):
     with pytest.raises(ValueError, match=message):
         analysis.reference_time_at_sun(("SXR peak", datetime(2021, 10, 28, 15, 35), observer))
+
+
+def test_vda_results_at_the_sun_at_1_au_and_at_the_spacecraft(fixed_spacecraft_distance):
+    v = vda_with_onsets(["2021-10-31 03:20", "2021-10-31 03:40", "2021-10-31 04:00", "2021-10-31 04:21"])
+    v.compute_vda()
+    assert list(v.results.columns) == ["Release Time (Sun)", "Release Time (1 AU)", "Release Time", "Release Time Error",
+                                       "Extra Time", "APL", "APL Error"]
+    res = v.results.loc[1]
+    at_sun, at_au = analysis.release_times(v.vda_fits[1])
+    assert res["Release Time (Sun)"] == f"{at_sun:%Y-%m-%d %H:%M:%S}"
+    assert res["Release Time (1 AU)"] == f"{at_au:%Y-%m-%d %H:%M:%S}"
+    # the time at the spacecraft adds its light travel time from the Sun
+    assert pd.Timestamp(res["Release Time"]) - pd.Timestamp(res["Release Time (Sun)"]) == pytest.approx(
+        res["Extra Time"], abs=pd.Timedelta(seconds=1))

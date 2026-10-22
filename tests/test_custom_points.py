@@ -266,7 +266,8 @@ def test_run_vda_from_the_form(displayed, monkeypatch, tmp_path, capsys):
     tool.reference_times = [("SXR peak", datetime(2021, 10, 31, 3, 5)), ("Not set", None)]
     tool.run_vda()
     out = capsys.readouterr().out
-    assert "A\n    Release Time :" in out and "B\n    Release Time :" in out
+    assert "A\n    Release at the Sun : " in out and "B\n    Release at the Sun : " in out
+    assert "\n    At the observer    : " in out
     assert list(tool.results.index) == ["A", "B"] and tool.results.index.name == "Group"
     assert tool.results.loc["A", "APL"] == pytest.approx(1200 / AU_SECONDS)
     # the same slope at another distance: the same path length

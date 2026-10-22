@@ -1110,7 +1110,7 @@ class VDA_multi_spacecraft_notebook(VDA_notebook):
             index=pd.Index(list(vdas), name="Spacecraft"),
         )
         for label, vda in vdas.items():
-            print_fit_results(label, self.results.loc[label], _fit_warnings(vda, 1))
+            print_fit_results(label, self.results.loc[label], _fit_warnings(vda, 1), "spacecraft")
         references = self._event_references(next(iter(vdas.values())), 1)
         if self.show_spacecraft_plots:
             for name, notebook in self.analyses.items():

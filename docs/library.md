@@ -74,7 +74,7 @@ vda.construct_energy_channels_characteristics()
 vda.define_spacecraft_parameters()      # distance of the observer from the Sun (e.g. SPICE kernels for Solar Orbiter)
 vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()                     # with the warnings of the fits (vda.vda_fits[event_no]["warnings"])
-print(vda.results)
+print(vda.results)                      # release times at the Sun, at 1 AU and at the spacecraft, and the APL
 
 fig = views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
 ```

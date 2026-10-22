@@ -5,7 +5,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 ## [Unreleased]
 
 ### Added
-- The printed release time shows the light travel time from the Sun that it includes, e.g. `2021-10-28 15:26:11 (+0:06:40) ± 0:03:38`: the release time at the Sun is 15:19:30. The user guide explains the release times, their error and the band of the plot (see [Results](docs/user_guide.md#results)).
+- The release time at the Sun and the time its light reaches 1 AU, as in the VDA plots, in the printed results and in the results table (columns `Release Time (Sun)` and `Release Time (1 AU)`). The printed results give the release time at the Sun with its error, then the times at 1 AU and at the spacecraft (or observer), with the light travel time from the Sun that the latter includes, e.g. `At the spacecraft : 2021-10-28 15:26:11 (+0:06:40 light travel time from the Sun)`. The user guide explains the release times, their error and the band of the plot (see [Results](docs/user_guide.md#results)).
 - `analysis.release_times(fit)`: the release time at the Sun of a VDA fit, where its line meets inverse beta 0, and the time its light reaches 1 AU.
 - The observer of each reference time: Earth (the default), one of the spacecraft of the tool, or its distance from the Sun in AU, which is used instead of the observer ("Observed from" and "or distance (AU)" in the Views/Plots tab; `(label, datetime, observer)` in scripts, e.g. `("type III", datetime(2021, 10, 28, 15, 27), "sta")` or `0.8`). The reference times are shown at the Sun, minus the light travel time from the Sun to their observer at that time, and their legend, in the lower right corner of the plot, gives the time at the Sun and the observed time of each, e.g. `SXR peak: 15:18:44 (15:27:00 at Earth)` (`analysis.reference_time_at_sun`).
 - Warnings with the results of a VDA fit that is not physical: an APL that is not positive, or a release at the Sun after the earliest onset (`analysis.fit_warnings`, in `vda.vda_fits[event_no]["warnings"]`).
@@ -22,6 +22,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - Labels: the parameters of the onset methods (e.g. "s: threshold in standard deviations above the background mean"), the time axis of the VDA plots ("Time (UTC)"), and the title of the onset plot (e.g. "HET protons"). The onset plot notes a zero background, whose levels cannot be shown in log scale.
 
 ### Fixed
+- The links of the notebook text to the user guide go to its page on GitHub. They were broken in the folder downloaded with `spearhead-vda-notebooks`, which has no `docs` folder.
 - The apparent path length (APL) is in AU: the path length $L = a \cdot c$ of the slope $a$ of the VDA fit. It was the path length divided by the distance of the observer from the Sun, too large by the factor 1 / distance (e.g. 1.76 instead of 1.42 AU for Solar Orbiter at 0.80 AU in the default event). The unit is shown in the printed results and the VDA plots.
 - The energy ranges of the channels are read again in the Data step when the events or the spacecraft were changed after the parameters form was shown (e.g. an events file typed in the form). The energy ranges of the default event were used, which differ for SOHO EPHIN events before October 2017 and for Wind.
 
@@ -32,6 +33,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - The results are unchanged, except for SOHO EPHIN events before October 2017 and Wind events analysed with an events file or events changed after the form was shown (now with the energy ranges of their first event), and for fits of two points (errors `n/a` instead of 0).
 - The APL of every analysis changes, except for an observer at 1 AU: multiply a previous APL by the distance of the observer from the Sun (AU) to compare. The release times are unchanged.
 - Reference times are now entered as observed: a `(label, datetime)` reference time is observed at Earth, and is shown about 8 minutes earlier than before, at the Sun. Give the observer of the others, or their distance from the Sun.
+- The results table has two new columns before `Release Time` (still the time at the spacecraft): `Release Time (Sun)` and `Release Time (1 AU)`. Code that reads the columns by name is unaffected. The printed results have the release time at the Sun first, and no "Extra Time" line (the light travel time is on the line of the time at the spacecraft).
 - `analysis.fit_vda` returns the warnings of the fit in its second value, and no longer prints a message for two points.
 
 ## [1.1.0] - 2026-10-17

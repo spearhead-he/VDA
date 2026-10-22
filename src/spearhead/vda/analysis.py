@@ -85,6 +85,12 @@ def fit_warnings(a: float,
     return []
 
 
+# Columns of the VDA results: the release time at the Sun, when its light reaches 1 AU and the observer ("Release
+# Time"), the error of the release times, the light travel time from the Sun to the observer, and the APL in AU
+RESULTS_COLUMNS = ["Release Time (Sun)", "Release Time (1 AU)", "Release Time", "Release Time Error", "Extra Time", "APL",
+                   "APL Error"]
+
+
 def fit_vda(inv_betas: np.ndarray,
             onset_seconds: np.ndarray,
             t0: datetime,
@@ -92,12 +98,13 @@ def fit_vda(inv_betas: np.ndarray,
             name: str | None = None) -> tuple:
     """Fits the VDA line of the points: onset_seconds (seconds after t0) against inv_betas.
 
-    t_sun_to_observer is the light travel time from the Sun to the observer (seconds). The release time is the time at
-    the Sun (the fit at inverse beta 0) plus this light travel time (the extra time), for comparison with
-    observations at the observer. Returns the results (release time, extra time, APL in AU and their errors) and the
-    fit (line t = a * inverse beta + b, with the error of b, and the warnings of fit_warnings). The APL is the path
-    length L = a * c of the slope a. With 2 points the line goes through both, and the errors are NaN. name (e.g.
-    "event 1") is no longer used, the warnings are returned.
+    t_sun_to_observer is the light travel time from the Sun to the observer (seconds). The release time at the Sun is
+    the fit at inverse beta 0; "Release Time (1 AU)" and "Release Time" add the light travel time to 1 AU and to the
+    observer (the extra time), for comparison with observations at Earth and at the observer. Returns the results
+    (columns RESULTS_COLUMNS: release times, extra time, APL in AU and their errors) and the fit (line
+    t = a * inverse beta + b, with the error of b, and the warnings of fit_warnings). The APL is the path length
+    L = a * c of the slope a. With 2 points the line goes through both, and the errors are NaN. name (e.g. "event 1")
+    is no longer used, the warnings are returned.
     """
     if len(inv_betas) > 2:
         p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
@@ -108,8 +115,12 @@ def fit_vda(inv_betas: np.ndarray,
         a, b = np.polyfit(inv_betas, onset_seconds, 1)
         a_error = np.nan
         b_error = np.nan
+    at_sun, at_au = release_times({"t0": t0, "b": b})
+    time_format = "%Y-%m-%d %H:%M:%S"
     results = {
-        "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
+        "Release Time (Sun)": at_sun.strftime(time_format),
+        "Release Time (1 AU)": at_au.strftime(time_format),
+        "Release Time": _light_time_later(at_sun, t_sun_to_observer).strftime(time_format),
         "Release Time Error": pd.NaT if np.isnan(b_error) else timedelta(seconds=b_error),
         "Extra Time": timedelta(seconds=t_sun_to_observer),
         "APL": a / AU_LIGHT_SECONDS,
@@ -141,11 +152,18 @@ def format_release_time(res: pd.Series, time_format: str = "%Y-%m-%d %H:%M:%S") 
             f"± {format_timedelta(res['Release Time Error'])}")
 
 
+def _light_time_later(time: pd.Timestamp,
+                      seconds: float) -> pd.Timestamp:
+    """The time plus the seconds, to the microsecond: the times are shown truncated to the second, and a fit through
+    3:00:00 may give 2:59:59.9999999"""
+    return (time + pd.Timedelta(seconds=seconds)).round("us")
+
+
 def release_times(fit: dict) -> tuple[pd.Timestamp, pd.Timestamp]:
     """Release time at the Sun of a VDA fit (in VDA.vda_fits), where the fit line meets inverse beta 0, and the time
     its light reaches 1 AU, for comparison with observations at Earth"""
-    at_sun = pd.Timestamp(fit["t0"]) + pd.Timedelta(seconds=fit["b"])
-    return at_sun, at_sun + pd.Timedelta(seconds=AU_LIGHT_SECONDS)
+    at_sun = _light_time_later(pd.Timestamp(fit["t0"]), fit["b"])
+    return at_sun, _light_time_later(at_sun, AU_LIGHT_SECONDS)
 
 
 class ReferenceTime(NamedTuple):
@@ -197,15 +215,25 @@ def reference_time_at_sun(reference: tuple) -> ReferenceTime:
 
 def print_fit_results(label: str,
                       res: pd.Series,
-                      warnings: list[str] = ()) -> None:
-    """Prints the results of a VDA fit (a row of VDA.results) under the label, with the warnings of the fit"""
+                      warnings: list[str] = (),
+                      observer: str = "observer") -> None:
+    """Prints the results of a VDA fit (a row of VDA.results) under the label, with the warnings of the fit.
+
+    The release time at the Sun and its error come first, followed by the times its light reaches 1 AU and the
+    observer (e.g. "spacecraft"), for comparison with observations at Earth and at the observer.
+    """
     print(label)
     if pd.isna(res.get("APL")):
         print("    No results (not enough onset points: they are needed at two different energies at least)\n")
         return
-    print(f"    Release Time : {format_release_time(res)}")
-    print(f"    Extra Time   : {format_timedelta(res['Extra Time'])} (light travel time from the Sun)")
-    print(f"    APL          : {res['APL']:.2f} ± {format_error(res['APL Error'])} AU")
+    at_observer = f"At the {observer}"
+    width = max(len("Release at the Sun"), len(at_observer))
+    error = format_timedelta(res["Release Time Error"])
+    print(f"    {'Release at the Sun':<{width}} : {res['Release Time (Sun)']} ± {error}")
+    print(f"    {'At 1 AU':<{width}} : {res['Release Time (1 AU)']}")
+    print(f"    {at_observer:<{width}} : {res['Release Time']} "
+          f"(+{format_timedelta(res['Extra Time'])} light travel time from the Sun)")
+    print(f"    {'APL':<{width}} : {res['APL']:.2f} ± {format_error(res['APL Error'])} AU")
     for warning in warnings:
         print(f"    Warning: {warning}")
     print()
@@ -215,13 +243,7 @@ class VDA:
 
     def __init__(self, parameters):
         self.parameters = parameters
-        self.results = pd.DataFrame({
-            "Release Time": [],
-            "Release Time Error": [],
-            "Extra Time": [],
-            "APL": [],
-            "APL Error": []
-        })
+        self.results = pd.DataFrame(columns=RESULTS_COLUMNS)
 
     ############### Reference Times DF ###############
     EVENT_INDEX_NAME = "Event No"
@@ -954,7 +976,7 @@ class VDA:
             time_end = self.df_times.loc[index_event][self.END_TIME_COLNAME].strftime("%Y-%m-%d %H:%M")
             print_fit_results(f"Event {index_event} ({time_start} to {time_end}) | {self.observer.label}",
                               self.results.loc[index_event],
-                              self.vda_fits.get(index_event, {}).get("warnings", []))
+                              self.vda_fits.get(index_event, {}).get("warnings", []), "spacecraft")
 
     def compute_vda(self):
         """Fits the VDA line of each event and stores the results in self.results.
@@ -1037,7 +1059,7 @@ class CustomPointsVDA:
         self.points = points
         self.distance = distance
         self.name = name
-        self.results = pd.DataFrame(columns=["Release Time", "Release Time Error", "Extra Time", "APL", "APL Error"])
+        self.results = pd.DataFrame(columns=RESULTS_COLUMNS)
         self.vda_fits = {}
 
     def compute_vda(self) -> None:
