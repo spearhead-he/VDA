@@ -62,7 +62,7 @@ def test_vda_default():
                       'Linear Regression',
                       'Extra Time = 0:06:40',
                       'Release Time = 2021-10-28 15:26:11 +/- 0:03:38',
-                      'APL = 1.76 +/- 0.12']
+                      'APL = 1.42 +/- 0.10 AU']
 
     if not _mpl_old:
         # Strip before returning — don't rely solely on remove_text=True

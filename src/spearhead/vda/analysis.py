@@ -31,6 +31,10 @@ from .observers import OBSERVERS
 # Rest mass energy of the particles, in MeV
 M_REST = {"protons": 938.27, "electrons": 0.511}
 
+# Light travel time over 1 AU, in seconds: the slope of the VDA line (seconds per inverse beta) divided by it is the
+# path length in AU
+AU_LIGHT_SECONDS = (u.AU / const.c).to(u.s).value
+
 
 def mean_energy(low_energy, high_energy) -> float:
     """Energy of a channel (the geometric mean of its range) in MeV. A single energy has low_energy == high_energy"""
@@ -46,8 +50,8 @@ def fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, name) -> tuple:
     """Fits the VDA line of the points: onset_seconds (seconds after t0) against inv_betas.
 
     t_sun_to_observer is the light travel time from the Sun to the observer (seconds), and name names the points in
-    the messages (e.g. "event 1"). Returns the results (release time, extra time, APL and their errors) and the fit
-    (line t = a * inverse beta + b, with the error of b).
+    the messages (e.g. "event 1"). Returns the results (release time, extra time, APL in AU and their errors) and the
+    fit (line t = a * inverse beta + b, with the error of b). The APL is the path length L = a * c of the slope a.
     """
     try:
         p, V = np.polyfit(inv_betas, onset_seconds, 1, cov=True)
@@ -65,8 +69,8 @@ def fit_vda(inv_betas, onset_seconds, t0, t_sun_to_observer, name) -> tuple:
         "Release Time": (t0 + timedelta(seconds=b + t_sun_to_observer)).strftime('%Y-%m-%d %H:%M:%S'),
         "Release Time Error": timedelta(seconds=b_error),
         "Extra Time": timedelta(seconds=t_sun_to_observer),
-        "APL": a / t_sun_to_observer,
-        "APL Error": a_error / t_sun_to_observer,
+        "APL": a / AU_LIGHT_SECONDS,
+        "APL Error": a_error / AU_LIGHT_SECONDS,
     }
     fit = {"a": a, "b": b, "b_error": b_error}
     return results, fit
@@ -759,7 +763,7 @@ class VDA:
                 continue
             print(f"    Release Time : {res['Release Time']} ± {self.format_timedelta(res['Release Time Error'])}")
             print(f"    Extra Time   : {self.format_timedelta(res['Extra Time'])}")
-            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+            print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f} AU\n")
 
     def compute_vda(self):
         """Fits the VDA line of each event and stores the results in self.results"""
@@ -821,7 +825,7 @@ class CustomPointsVDA:
 
     points: DataFrame with the "Onset Time", "Particle" ("protons" or "electrons"), "Low Energy" and "High Energy" (MeV)
     of each point. The energy of a point is the geometric mean of its range; a single energy has equal low and high.
-    distance: distance of the observer from the Sun (AU), for the light travel time (extra time) and the APL.
+    distance: distance of the observer from the Sun (AU), for the light travel time (extra time).
 
     As in VDA, compute_vda() stores the results in self.results and the fit in self.vda_fits, with the event number 1,
     so that views.plot_vda_combined can plot them.

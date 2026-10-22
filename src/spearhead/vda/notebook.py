@@ -46,7 +46,7 @@ def _print_results(label, res, format_timedelta) -> None:
         return
     print(f"    Release Time : {res['Release Time']} ± {format_timedelta(res['Release Time Error'])}")
     print(f"    Extra Time   : {format_timedelta(res['Extra Time'])}")
-    print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f}\n")
+    print(f"    APL          : {res['APL']:.2f} ± {res['APL Error']:.2f} AU\n")
 
 
 def _compute_vda(vda) -> None:
