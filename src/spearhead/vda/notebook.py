@@ -20,7 +20,8 @@ from pandas.errors import PerformanceWarning
 from sunpy import log as sunpy_log
 
 from . import views
-from .analysis import EARTH, MAX_DISTANCE, VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, print_fit_results, read_points_file
+from .analysis import (EARTH, MAX_DISTANCE, VDA, CustomPointsVDA, PARTICLE_NAMES, points_df, print_fit_results,
+                       read_points_file, time_format)
 from .conf import (DEFAULT_DATA_PATH, ONSET_METHOD_LABELS, RESAMPLE_FREQUENCY_EXAMPLES, OnsetSelection, VDA_parameters,
                    channel_group_label, check_resample_frequency)
 from .observers import OBSERVERS
@@ -736,8 +737,9 @@ class VDA_notebook(_NotebookBase):
             event_no = wgt_event.value
             times = vda.df_grouped.loc[event_no].index
             bg_start, bg_end = vda.bg_window(event_no)
+            bg_format = f"%Y-%m-%d {time_format(bg_start, bg_end)}"
             status = (
-                f"Background {bg_start:%Y-%m-%d %H:%M} to {bg_end:%Y-%m-%d %H:%M} "
+                f"Background {bg_start:{bg_format}} to {bg_end:{bg_format}} "
                 f"({vda.bg_window_source(event_no)}), {vda.bg_window_points(event_no, times)} points"
             )
             warnings = vda.bg_window_warnings(event_no, times)
@@ -753,8 +755,10 @@ class VDA_notebook(_NotebookBase):
             # the data points closest to the event's window, inside it
             i_start = min(int(times.searchsorted(bg_start)), len(times) - 1)
             i_end = max(int(times.searchsorted(bg_end, side="right")) - 1, i_start)
+            # with seconds for times at the centre of their bins, e.g. 14:02:30 for a bin of 5 minutes from 14:00
+            times_format = f"%Y-%m-%d {time_format(*times)}"
             updating["slider"] = True
-            wgt_bg.options = [(f"{t:%Y-%m-%d %H:%M}", t) for t in times]
+            wgt_bg.options = [(f"{t:{times_format}}", t) for t in times]
             wgt_bg.index = (i_start, i_end)
             updating["slider"] = False
             redraw()

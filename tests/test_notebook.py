@@ -366,27 +366,29 @@ def test_background_selection(displayed):
     wgt_bg = find(box, widgets.SelectionRangeSlider)[0]
     wgt_status = box.children[2]
     assert [label for label, _ in wgt_event.options] == ["Event 1 (2021-10-28 14:00)", "Event 2 (2021-11-09 15:00)"]
-    # the default window: the first hour, 13 points at 5 minutes
-    assert wgt_bg.value == (pd.Timestamp("2021-10-28 14:00"), pd.Timestamp("2021-10-28 15:00"))
-    assert wgt_status.value.startswith("Background 2021-10-28 14:00 to 2021-10-28 15:00 (default), 13 points")
+    # the default window: the first hour, with the 12 bins of 5 minutes inside it, timestamped at their centre
+    assert wgt_bg.value == (pd.Timestamp("2021-10-28 14:02:30"), pd.Timestamp("2021-10-28 14:57:30"))
+    assert wgt_bg.options[0][0] == "2021-10-28 14:02:30"
+    assert wgt_status.value.startswith("Background 2021-10-28 14:00 to 2021-10-28 15:00 (default), 12 points")
     n_figures = len(displayed)
 
     wgt_bg.index = (12, 24)
-    assert tool.vda.bg_window(1) == (pd.Timestamp("2021-10-28 15:00"), pd.Timestamp("2021-10-28 16:00"))
+    assert tool.vda.bg_window(1) == (pd.Timestamp("2021-10-28 15:02:30"), pd.Timestamp("2021-10-28 16:02:30"))
+    assert wgt_status.value.startswith("Background 2021-10-28 15:02:30 to 2021-10-28 16:02:30 (set), 13 points")
     assert tool.vda.bg_window_source(1) == "set"
     assert len(displayed) == n_figures + 1
 
     wgt_bg.index = (24, 24)
     assert wgt_status.value == "<b>The background start must be before its end</b>"
-    assert tool.vda.bg_window(1)[1] == pd.Timestamp("2021-10-28 16:00")
+    assert tool.vda.bg_window(1)[1] == pd.Timestamp("2021-10-28 16:02:30")
 
     wgt_event.value = 2
-    assert wgt_bg.value == (pd.Timestamp("2021-11-09 15:00"), pd.Timestamp("2021-11-09 16:00"))
+    assert wgt_bg.value == (pd.Timestamp("2021-11-09 15:02:30"), pd.Timestamp("2021-11-09 15:57:30"))
     wgt_event.value = 1
-    assert wgt_bg.value == (pd.Timestamp("2021-10-28 15:00"), pd.Timestamp("2021-10-28 16:00"))
+    assert wgt_bg.value == (pd.Timestamp("2021-10-28 15:02:30"), pd.Timestamp("2021-10-28 16:02:30"))
     find(box, description="Reset to default")[0].click()
     assert tool.vda.bg_window_source(1) == "default"
-    assert wgt_bg.value == (pd.Timestamp("2021-10-28 14:00"), pd.Timestamp("2021-10-28 15:00"))
+    assert wgt_bg.value == (pd.Timestamp("2021-10-28 14:02:30"), pd.Timestamp("2021-10-28 14:57:30"))
 
 
 def test_interactive_onset_selection(displayed):

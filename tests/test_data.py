@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from spearhead.vda import VDA, VDA_parameters
-from spearhead.vda import observers
+from spearhead.vda import analysis, observers
 from tests.helpers import make_vda, rising_epd_data
 
 
@@ -42,10 +42,40 @@ def test_data_times_in_order_with_a_gap(monkeypatch):
     assert v.df_data.loc[1]["het"]["protons"]["sun"]["H_Flux"].loc[:"2021-10-28 14:09"].isna().all().all()
 
 
+def test_resample_timestamps_at_the_centre():
+    # data timestamped at the centre of their 1-minute bins, as the loaders give them
+    index = pd.date_range("2021-10-28 14:00:30", periods=10, freq="1min")
+    df = pd.DataFrame({"H_Flux_0": range(10)}, index=index, dtype=float)
+    resampled = analysis.resample(df, "5min", pd.Timestamp("2021-10-28 14:00"))
+    assert resampled.index.tolist() == [pd.Timestamp("2021-10-28 14:02:30"), pd.Timestamp("2021-10-28 14:07:30")]
+    assert resampled["H_Flux_0"].tolist() == [2.0, 7.0]
+
+
+def test_resampled_data_aligned_at_the_centre_of_the_bins(monkeypatch):
+    # the sun viewing starts in the middle of a bin: the bins of both viewings start at the start of the event
+    def epd_load(**kwargs):
+        data = rising_epd_data(**kwargs)
+        if kwargs["viewing"] == "sun":
+            data = tuple(df[df.index >= "2021-10-28 14:07"] for df in data[:2]) + (data[2],)
+        return data
+
+    monkeypatch.setattr(observers, "epd_load", epd_load)
+    v = make_vda(date_ranges=[(datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 15))], resample_frequency="5min",
+                 viewings=["sun", "north"],
+                 channel_groups={"protons": {"HET/protons Channel 1": {"sensor": "het", "channels": [1, 2]}}})
+    v.construct_times_df()
+    v.construct_energies_df()
+    v.construct_particles_df()
+    times = v.df_data.loc[1].index
+    assert times.tolist() == pd.date_range("2021-10-28 14:02:30", periods=13, freq="5min").tolist()
+    assert v.df_data.loc[1]["het"]["protons"]["sun"]["H_Flux"].loc[:"2021-10-28 14:03"].isna().all().all()
+    assert v.df_data.loc[1]["het"]["protons"]["sun"]["H_Flux"].loc["2021-10-28 14:07:30":].notna().all().all()
+
+
 @pytest.mark.parametrize("saved_attrs, expected_frequency, message", [
-    ({"resample_frequency": "10min"}, "10min", "Resample frequency set to '10min'"),
-    ({"resample_frequency": "5min"}, "5min", None),
-    ({}, "5min", "do not include their resample frequency"),
+    ({"resample_frequency": "10min", "timestamps": "centre"}, "10min", "Resample frequency set to '10min'"),
+    ({"resample_frequency": "5min", "timestamps": "centre"}, "5min", None),
+    ({"timestamps": "centre"}, "5min", "do not include their resample frequency"),
 ])
 def test_loaded_data_resample_frequency(tmp_path, capsys, saved_attrs, expected_frequency, message):
     df = pd.DataFrame({"x": [1.0, 2.0]})
@@ -56,6 +86,21 @@ def test_loaded_data_resample_frequency(tmp_path, capsys, saved_attrs, expected_
     assert v.parameters.resample_frequency == expected_frequency
     out = capsys.readouterr().out
     assert (message in out) if message else ("esample" not in out)
+
+
+@pytest.mark.parametrize("saved_attrs, resample_frequency, warned", [
+    ({"resample_frequency": "5min"}, "5min", True),
+    ({"resample_frequency": "5min", "timestamps": "centre"}, "5min", False),
+    ({"resample_frequency": ""}, "", False),
+])
+def test_loaded_data_timestamped_at_the_start_of_their_bins(tmp_path, capsys, saved_attrs, resample_frequency, warned):
+    # resampled data saved by version 1.1.0 or earlier
+    df = pd.DataFrame({"x": [1.0, 2.0]})
+    df.attrs = dict(saved_attrs)
+    df.to_pickle(tmp_path / "data.pkl")
+    v = make_vda(resample_frequency=resample_frequency, load_data_filepath=str(tmp_path / "data.pkl"))
+    v.construct_particles_df()
+    assert ("timestamped at the start of their bins instead of their centre" in capsys.readouterr().out) == warned
 
 
 @pytest.mark.parametrize("saved_attrs", [{"observer": "solo"}, {}])

@@ -12,7 +12,7 @@ import pytest
 from matplotlib.collections import PathCollection
 
 from spearhead.vda import analysis, observers, views
-from tests.helpers import legend_texts, make_vda, reference_legend, table_rows
+from tests.helpers import legend_texts, make_vda, reference_legend, rising_epd_data, table_rows
 
 
 class FixedDistance:
@@ -239,6 +239,51 @@ def test_vda_results_of_the_events_of_the_last_run(fixed_spacecraft_distance):
     v.results.loc[2] = v.results.columns.map(lambda c: None)
     v.compute_vda()
     assert v.results.index.tolist() == [1]
+
+
+def two_events_vda(monkeypatch):
+    """Two events of the synthetic data, with one grouped channel of protons and one of electrons"""
+    monkeypatch.setattr(observers, "epd_load", rising_epd_data)
+    monkeypatch.setattr(analysis.VDA, "define_spacecraft_parameters", lambda self: None)
+    monkeypatch.setattr(observers.SolarOrbiter, "distance", lambda self, time: FixedDistance.distance)
+    return make_vda(
+        date_ranges=[(datetime(2021, 10, 28, 14), datetime(2021, 10, 28, 20)),
+                     (datetime(2021, 11, 9, 15), datetime(2021, 11, 9, 21))],
+        channel_groups={"protons": {"HET/protons Channel 1": {"sensor": "het", "channels": [1, 2]}},
+                        "electrons": {"HET/electrons Channel 1": {"sensor": "het", "channels": [0, 1]}}},
+    )
+
+
+def test_run_gives_the_results_of_the_steps(monkeypatch):
+    v_steps = two_events_vda(monkeypatch)
+    for step in ("construct_times_df", "construct_energies_df", "construct_particles_df", "group_energy_channels",
+                 "calculate_onsets", "clean_onsets", "construct_options_df", "select_onsets",
+                 "construct_energy_channels_characteristics", "define_spacecraft_parameters", "compute_vda"):
+        getattr(v_steps, step)()
+    v = two_events_vda(monkeypatch)
+    results = v.run()
+    assert results is v.results
+    pd.testing.assert_frame_equal(results, v_steps.results)
+    # the tables of the steps stay available
+    for table in ("df_times", "df_energies", "df_data", "df_grouped", "df_onsets_existing", "df_options",
+                  "df_channels_chars"):
+        pd.testing.assert_frame_equal(getattr(v, table), getattr(v_steps, table))
+    assert v.vda_fits.keys() == v_steps.vda_fits.keys() == {1, 2}
+
+
+def test_run_with_background_windows(monkeypatch):
+    v = two_events_vda(monkeypatch)
+    v.run(bg_windows={2: ("2021-11-09 15:30", "2021-11-09 16:30")})
+    assert v.bg_window(2) == (datetime(2021, 11, 9, 15, 30), datetime(2021, 11, 9, 16, 30))
+    assert (v.bg_window_source(1), v.bg_window_source(2)) == ("default", "set")
+    background = v.df_onsets_existing.xs(2, level=0)["Background Start"]
+    assert (background == pd.Timestamp("2021-11-09 15:30")).all()
+
+
+def test_background_window_of_an_unknown_event(monkeypatch):
+    v = two_events_vda(monkeypatch)
+    with pytest.raises(ValueError, match="No event 3: the events are 1, 2"):
+        v.run(bg_windows={3: ("2021-11-09 15:30", "2021-11-09 16:30")})
 
 
 def test_vda_steps_in_order():

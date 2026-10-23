@@ -44,6 +44,7 @@ def test_data_from_the_observer(monkeypatch):
     assert v.df_energies.loc[("ept", "Electron_Flux_1"), "High Energy"] == 2.0
     v.construct_particles_df()
     assert v.df_data.attrs["observer"] == "solo"
+    assert v.df_data.attrs["timestamps"] == "centre"
     assert v.df_data.columns.tolist() == [("het", "protons", viewing, "H_Flux", f"H_Flux_{c}")
                                           for viewing in ("sun", "north") for c in range(3)]
     assert len(v.df_data) == 4

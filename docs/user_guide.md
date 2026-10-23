@@ -74,9 +74,9 @@ The parameters form has five tabs:
 - **Data**:
   - the observer (spacecraft). Changing it sets the viewings and the grouped channels to the defaults of the observer. The energy ranges of its channels are read from the data of the first event: if there are no data (e.g. BepiColombo before 2020), an error is shown in red and the grouped channels (Energy channels tab) are grayed out until another spacecraft is chosen, or the events are changed and the channels are read again ("Read the channels again" button); the rest of the form can still be used. If the events are changed after the form is shown, the energy ranges are read again from the new first event in the Data step
   - the viewings
-  - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), e.g. `5min`, `30s` or `1h`, blank for no resampling). An invalid one is shown in red
+  - the resample frequency ([offset alias](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases), e.g. `5min`, `30s` or `1h`, blank for no resampling). The resampled data are the means in bins of that length from the start time of the event, timestamped at the centre of their bins, as the data loaders timestamp the data (e.g. 14:02:30 for the bin from 14:00 to 14:05); the onset times are those of these timestamps. An invalid one is shown in red
   - the folder of the downloaded data files (by default `particle_data` in the current directory, i.e. the folder of the notebook; an absolute or relative path, `~` for the home folder). The files are kept, in a subfolder per spacecraft (`solo`, `stereo`, `psp`, `soho`, `wind`, `bepi`), so the data of an event are downloaded only once; a temporary folder (e.g. `tempfile.mkdtemp()`) does not keep them
-  - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded.
+  - optionally, a .pkl file to load previously saved data from (instead of downloading them) and a .pkl file to save the data to. The resample frequency is saved with the data and used when they are loaded. Resampled data saved by version 1.1.0 or earlier are timestamped at the start of their bins, and a message says so: download them again for the times at the centre of the bins.
 - **Energy channels**: the grouped channels ("Add Channel" / "Remove Channel"; select multiple channels with Ctrl+click). The lists show the energy range of each channel. The intensity of a group is the bin-width weighted mean $I'=\frac{\sum I_n \Delta E_n}{\sum \Delta E_n}$. A note shows when the energy ranges of a sensor changed on a date (SOHO EPHIN, see [Observers](#observers)).
 - **Onsets**: the onset determination method and its parameters (see [Onset determination](#onset-determination)), the default background window, and the onset selection method.
 - **Views/Plots**: font sizes, saving of the VDA plots as .png files, reference times for the VDA plots, and display of the intermediate tables (off by default).
@@ -130,9 +130,9 @@ For each event, the release time at the Sun with its error, the times its light 
 
 ```
 Event 1 (2021-10-28 14:00 to 2021-10-28 20:00) | Solar Orbiter
-    Release at the Sun : 2021-10-28 15:19:30 ± 0:03:38
-    At 1 AU            : 2021-10-28 15:27:49
-    At the spacecraft  : 2021-10-28 15:26:11 (+0:06:40 light travel time from the Sun)
+    Release at the Sun : 2021-10-28 15:22:00 ± 0:03:38
+    At 1 AU            : 2021-10-28 15:30:19
+    At the spacecraft  : 2021-10-28 15:28:41 (+0:06:40 light travel time from the Sun)
     APL                : 1.42 ± 0.10 AU
 ```
 

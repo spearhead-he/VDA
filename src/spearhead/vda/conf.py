@@ -83,11 +83,14 @@ REMOVED_PARAMETERS = {
 
 
 def check_resample_frequency(frequency: str) -> None:
-    """Raises an error if the resample frequency is not a pandas offset alias (an empty one means no resampling)"""
+    """Raises an error if the resample frequency is not a pandas offset alias of a fixed duration (an empty one means no
+    resampling)"""
     if not frequency:
         return
     try:
         pd.tseries.frequencies.to_offset(frequency)
+        # a fixed duration, e.g. not a month, for the timestamps at the centre of the bins
+        pd.Timedelta(frequency)
     except ValueError:
         raise ValueError(f"Invalid resample frequency {frequency!r}: use a pandas offset alias "
                          f"({RESAMPLE_FREQUENCY_EXAMPLES}), or leave it blank for no resampling") from None
