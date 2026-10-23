@@ -86,7 +86,7 @@ def test_valid_resample_frequency(frequency):
     check_resample_frequency(frequency)
 
 
-@pytest.mark.parametrize("frequency", ["5 minutes", "5", "five"])
+@pytest.mark.parametrize("frequency", ["5 minutes", "5", "five", "ME", "W"])
 def test_invalid_resample_frequency(frequency):
     with pytest.raises(ValueError, match=f"Invalid resample frequency '{frequency}': use a pandas offset alias "
                                          r"\(e.g. 5min, 30s or 1h\), or leave it blank for no resampling"):

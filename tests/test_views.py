@@ -102,14 +102,14 @@ def test_plot_onsets_sigma(vda_onsets):
     assert ax_sun.get_title() == "sun (selected)"
     assert ax_north.get_title() == "north"
     assert [line.get_label() for line in ax_sun.get_lines()] == ["Data", "BG level", "Threshold", "Onset"]
-    # the onset is the last point before the rise
+    # the onset is the last point before the rise, timestamped at the centre of its bin of 5 minutes
     onset_line = ax_sun.get_lines()[-1]
-    assert as_datetime(onset_line.get_xdata()[0]) == RISE - pd.Timedelta("5min")
+    assert as_datetime(onset_line.get_xdata()[0]) == RISE - pd.Timedelta("2.5min")
     method_specific = v.df_onsets_existing.loc[(1, "het", "protons", "sun", "H_Flux", "HET/protons Channel 1"),
                                                "Method Specific"]
     assert ax_sun.get_lines()[2].get_ydata()[0] == pytest.approx(method_specific["threshold"])
     values = ax_sun.texts[0].get_text().split("\n")
-    assert values[0] == "Onset 15:55"
+    assert values[0] == "Onset 15:57:30"
     assert values[1].startswith("BG ") and values[2].startswith("Threshold ")
     # the north viewing has no rise
     assert [t.get_text() for t in ax_north.texts] == ["No onset"]

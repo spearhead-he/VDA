@@ -45,26 +45,28 @@ from spearhead.vda import VDA, VDA_parameters, views
 
 parameters = VDA_parameters()
 parameters.input_filepath = "examples/datetime_range_example.csv"
-parameters.observer = "solo"            # Solar Orbiter (or "sta", "psp", "soho", "wind", "bepi")
-parameters.viewings = ["sun"]
-parameters.channel_groups = {
-    "protons": {
-        "HET protons 1": {"sensor": "het", "channels": [1, 2, 3]},
-        "HET protons 2": {"sensor": "het", "channels": [10, 11, 12]},
-        "HET protons 3": {"sensor": "het", "channels": [19, 20, 21]},
-    },
-    "electrons": {
-        "HET electrons 1": {"sensor": "het", "channels": [0, 1]},
-        "HET electrons 2": {"sensor": "het", "channels": [2, 3]},
-    },
-}
+parameters.observer = "solo"            # Solar Orbiter (or "sta", "psp", "soho", "wind", "bepi"), with its default
+                                        # viewings and grouped channels (parameters.viewings, parameters.channel_groups)
 
+vda = VDA(parameters)
+results = vda.run(bg_windows={2: ("2021-10-28 14:10", "2021-10-28 14:55")})   # all the steps; optional: background of event 2
+vda.print_results()                     # with the warnings of the fits (vda.vda_fits[event_no]["warnings"])
+print(results)                          # release times at the Sun, at 1 AU and at the spacecraft, and the APL
+
+fig = views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
+```
+
+`vda.run()` runs the steps of the analysis, from the events to the VDA fits, and returns the results (`vda.results`). The tables of the steps stay available afterwards, e.g. `vda.df_data` (the data), `vda.df_grouped` (the grouped channels), `vda.df_onsets_existing` (the onsets) and `vda.vda_fits` (the fits). The onsets are selected with "Use all".
+
+The steps can also be run one by one, e.g. to check or change the tables between them:
+
+```python
 vda = VDA(parameters)
 vda.construct_times_df()                # events and background windows
 vda.construct_energies_df()             # energy bins of the channels
 vda.construct_particles_df()            # download (or load) the data
 vda.group_energy_channels()
-vda.set_bg_window(2, "2021-11-09 15:30", "2021-11-09 16:30")   # optional: background of one event
+vda.set_bg_window(2, "2021-10-28 14:10", "2021-10-28 14:55")   # optional: background of one event
 vda.calculate_onsets()
 vda.clean_onsets()
 vda.print_onset_counts()                # optional: grouped channels with onsets in each event
@@ -75,8 +77,6 @@ vda.define_spacecraft_parameters()      # distance of the observer from the Sun 
 vda.compute_vda()                       # VDA fit of every event, without plots
 vda.print_results()                     # with the warnings of the fits (vda.vda_fits[event_no]["warnings"])
 print(vda.results)                      # release times at the Sun, at 1 AU and at the spacecraft, and the APL
-
-fig = views.plot_vda(vda, 1, filename="event_1.png")   # VDA plot of event 1
 ```
 
 ## Plots
@@ -136,7 +136,7 @@ tool.onset_selection()        # after vda.select_onsets()
 | `bg_after_start` | Default background window, (start, end) in minutes after the start of the data of each event |
 | `observer` | Spacecraft of the data, one of `observers.OBSERVERS`: `"solo"` (Solar Orbiter EPD: HET and EPT), `"sta"` (STEREO-A IMPACT: HET and SEPT) `"psp"` (Parker Solar Probe ISOIS: EPI-Hi HET), `"soho"` (SOHO: ERNE-HED and COSTEP-EPHIN), `"wind"` (Wind: 3DP) or `"bepi"` (BepiColombo: SIXS-P), see the [user guide](user_guide.md#observers). Setting `observer` sets `viewings` and `channel_groups` to its defaults |
 | `viewings` | Viewings, in the priority order of the "Use all" onset selection. Each sensor uses the selected viewings it has (`vda.sensor_viewings(sensor)`). By default, those of the observer (`["sun"]` for Solar Orbiter, `["sun", "omni"]` for STEREO-A, `["A"]` for Parker Solar Probe, `["omni"]` for SOHO and Wind, `["side0"]` for BepiColombo) |
-| `resample_frequency` | Pandas offset alias (e.g. `"5min"`), or `""` for no resampling |
+| `resample_frequency` | Pandas offset alias of a fixed duration (e.g. `"5min"`), or `""` for no resampling. The resampled data are timestamped at the centre of their bins (`analysis.resample`) |
 | `channel_groups` | Grouped channels per particle: `{label: {"sensor": e.g. "het", "channels": [...]}}`. By default, those of the observer (for Solar Orbiter, 8 groups of HET protons and 2 of HET electrons; for STEREO-A, 4 of HET protons and 1 of HET electrons; for Parker Solar Probe, 3 of HET protons and 9 of HET electrons; for SOHO, 2 of ERNE protons and 1 of EPHIN electrons; for Wind, 3 of 3DP protons and 3 of 3DP electrons; for BepiColombo, 3 of SIXS protons and 3 of SIXS electrons) |
 | `onset_method`, `onset_method_parameters` | Onset determination method, `"sigma"` (parameters `s`, `n`) or `"poisson_cusum"` (parameters `cusum_minutes`, `sigma_multiplier`), see the [user guide](user_guide.md#onset-determination). Setting `onset_method` sets its parameters to their defaults |
 | `onset_selection` | `OnsetSelection.USE_ALL` or `OnsetSelection.INTERACTIVE` |

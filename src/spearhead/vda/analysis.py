@@ -5,6 +5,7 @@ The VDA class performs the steps of the analysis:
 - data: download (or load) of the intensities of the observer, resampling and grouping of the energy channels
 - onsets: onset times of each grouped channel and viewing, and the selection of the ones used for the fit
 - VDA fit: release time and apparent path length of each event
+run() runs all of them, and returns the results.
 
 CustomPointsVDA is the VDA fit of onset points given by the user (onset time, energy and particle of each point),
 in groups (e.g. one per spacecraft), read from a points file with read_points_file() or created from a DataFrame.
@@ -91,6 +92,24 @@ def to_datetimes(column: pd.Series, filepath: str) -> pd.Series:
         raise ValueError(f"Invalid datetimes in the column {column.name} of {filepath}, in the rows {rows}: use one "
                          f"format supported by pandas.to_datetime for the whole file, e.g. 2024-12-31 00:00:00")
     return datetimes
+
+
+def resample(df: pd.DataFrame,
+             frequency: str,
+             start: pd.Timestamp) -> pd.DataFrame:
+    """Returns the mean of the data in bins of the frequency from the start, each timestamped at its centre.
+
+    The loaders (seppy, solo-epd-loader) timestamp the data at the centre of their bins, and so do their resampling.
+    Bins from the start of the event line up the times of all the sensors and viewings.
+    """
+    df = df.resample(frequency, origin=start).mean()
+    df.index = df.index + pd.Timedelta(frequency) / 2
+    return df
+
+
+def time_format(*times: pd.Timestamp) -> str:
+    """Returns the format of the times of day, with seconds if any of them has seconds (e.g. at the centre of a bin)"""
+    return "%H:%M:%S" if any(pd.Timestamp(t).second or pd.Timestamp(t).microsecond for t in times) else "%H:%M"
 
 
 def has_enough_points(inv_betas) -> bool:
@@ -479,6 +498,8 @@ class VDA:
 
     def set_bg_window(self, index_event, start, end) -> None:
         """Sets the background window of the event, used instead of the input file or default one"""
+        if index_event not in self.df_times.index:
+            raise ValueError(f"No event {index_event!r}: the events are {', '.join(map(str, self.df_times.index))}")
         start, end = pd.Timestamp(start), pd.Timestamp(end)
         if start >= end:
             raise ValueError(f"Background start ({start}) must be before its end ({end})")
@@ -618,10 +639,9 @@ class VDA:
                             & (df_particle.index <= row[self.END_TIME_COLNAME])
                         ]
                         if self.parameters.resample_frequency:
-                            df_particle = df_particle.resample(
-                                self.parameters.resample_frequency, origin="start"
-                            ).mean()
-                            df_particle.index = df_particle.index.floor("min")
+                            df_particle = resample(
+                                df_particle, self.parameters.resample_frequency, row[self.START_TIME_COLNAME]
+                            )
                         df_particle = pd.concat(
                             [df_particle],
                             keys=[(sensor, particle, viewing, self.PARTICLE_COLUMN_PREFIX[particle])],
@@ -645,6 +665,13 @@ class VDA:
             self.parameters.resample_frequency = saved
             print(f"Resample frequency set to {describe(saved)}, the one of the loaded data (instead of {describe(current)})")
 
+    def _check_saved_timestamps(self) -> None:
+        # data resampled by version 1.1.0 or earlier are timestamped at the start of their bins
+        if self.parameters.resample_frequency and self.df_data.attrs.get("timestamps") != "centre":
+            print(f"The data of {self.parameters.load_data_filepath} were saved by version 1.1.0 or earlier, with the "
+                  f"resampled data timestamped at the start of their bins instead of their centre: download them again "
+                  f"(without a data file to load) for the onset times at the centre of the bins")
+
     def _check_saved_observer(self) -> None:
         # data saved before the observer was recorded are Solar Orbiter data
         saved = self.df_data.attrs.get("observer", "solo")
@@ -664,11 +691,13 @@ class VDA:
             self.df_data = pd.read_pickle(self.parameters.load_data_filepath)
             self._check_saved_observer()
             self._use_saved_resample_frequency()
+            self._check_saved_timestamps()
         else:
             self.df_data = self._download_data()
             # saved with the data, so that loaded data are used with their observer and resample frequency
             self.df_data.attrs["observer"] = self.parameters.observer
             self.df_data.attrs["resample_frequency"] = self.parameters.resample_frequency
+            self.df_data.attrs["timestamps"] = "centre"
         if self.parameters.save_data_filepath:
             self.df_data.to_pickle(self.parameters.save_data_filepath)
 
@@ -1074,6 +1103,28 @@ class VDA:
                 "particles": particles,
                 **fit,
             }
+
+    def run(self, bg_windows: dict | None = None) -> pd.DataFrame:
+        """Runs the steps of the analysis, from the events to the VDA fits, and returns the results (self.results).
+
+        The tables of the steps stay available, as after running them one by one (e.g. self.df_data, self.df_grouped,
+        self.df_onsets_existing, self.vda_fits). bg_windows sets the background window of some events, as
+        {event number: (start, end)}. The onsets are selected with "Use all".
+        """
+        self.construct_times_df()
+        for index_event, (start, end) in (bg_windows or {}).items():
+            self.set_bg_window(index_event, start, end)
+        self.construct_energies_df()
+        self.construct_particles_df()
+        self.group_energy_channels()
+        self.calculate_onsets()
+        self.clean_onsets()
+        self.construct_options_df()
+        self.select_onsets()
+        self.construct_energy_channels_characteristics()
+        self.define_spacecraft_parameters()
+        self.compute_vda()
+        return self.results
 
 
 class CustomPointsVDA:

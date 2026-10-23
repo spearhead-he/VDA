@@ -57,7 +57,7 @@ def test_vda_default():
 
     # check the legend and the results table manually
     assert legend_texts(fig.axes[0]) == ['Protons', 'Electrons', 'VDA fit', '2σ band', 'Release at the Sun']
-    assert table_rows(fig)[1] == ['Solar Orbiter', '15:19:30', '15:27:49', '± 0:03:38', '1.42 ± 0.10']
+    assert table_rows(fig)[1] == ['Solar Orbiter', '15:22:00', '15:30:19', '± 0:03:38', '1.42 ± 0.10']
 
     if not _mpl_old:
         # Strip before returning — don't rely solely on remove_text=True

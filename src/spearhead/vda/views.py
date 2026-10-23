@@ -18,7 +18,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from .analysis import format_error, format_timedelta, reference_time_at_sun, release_times
+from .analysis import format_error, format_timedelta, reference_time_at_sun, release_times, time_format
 
 
 def _time_axis(ax, times, maxticks=None) -> None:
@@ -58,10 +58,11 @@ def plot_bg(vda, event_no, filename=None) -> Figure:
 
     bg_start, bg_end = vda.bg_window(event_no)
     ax.axvspan(bg_start, bg_end, color="green", alpha=0.2, label="Background")
-    bg_end_format = "%H:%M" if bg_start.date() == bg_end.date() else "%Y-%m-%d %H:%M"
+    bg_time_format = time_format(bg_start, bg_end)
+    bg_end_format = bg_time_format if bg_start.date() == bg_end.date() else f"%Y-%m-%d {bg_time_format}"
     ax.set_title(
         f"Event {event_no}\n"
-        f"Background: {bg_start:%Y-%m-%d %H:%M} to {bg_end:{bg_end_format}} ({vda.bg_window_source(event_no)})"
+        f"Background: {bg_start:%Y-%m-%d {bg_time_format}} to {bg_end:{bg_end_format}} ({vda.bg_window_source(event_no)})"
     )
 
     ax.set_yscale("log")
@@ -123,7 +124,8 @@ def plot_onsets(vda, event_no, sensor, particle, particle_prefix, channel, selec
         ax.axvspan(onset_results["Background Start"], onset_results["Background End"],
                    color="green", alpha=0.3, label="BG sample")
         method_specific = onset_results["Method Specific"]
-        values = [f"Onset {onset_results['Onset Time']:%H:%M}"]
+        onset_time = onset_results["Onset Time"]
+        values = [f"Onset {onset_time:{time_format(onset_time)}}"]
         values += _plot_onset_levels(ax, method_specific if isinstance(method_specific, dict) else {})
         ax.axvline(onset_results["Onset Time"], color="purple", linestyle="dashed", label="Onset")
         ax.text(0.98, 0.03, "\n".join(values), transform=ax.transAxes, ha="right", va="bottom",
