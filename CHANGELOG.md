@@ -29,6 +29,7 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 - The links of the notebook text to the user guide go to its page on GitHub. They were broken in the folder downloaded with `spearhead-vda-notebooks`, which has no `docs` folder.
 - The apparent path length (APL) is in AU: the path length $L = a \cdot c$ of the slope $a$ of the VDA fit. It was the path length divided by the distance of the observer from the Sun, too large by the factor 1 / distance (e.g. 1.76 instead of 1.42 AU for Solar Orbiter at 0.80 AU in the default event). The unit is shown in the printed results and the VDA plots.
 - The energy ranges of the channels are read again in the Data step when the events or the spacecraft were changed after the parameters form was shown (e.g. an events file typed in the form). The energy ranges of the default event were used, which differ for SOHO EPHIN events before October 2017 and for Wind.
+- Solar Orbiter without data on SOAR for an event (e.g. 2021-09-18) gives the error `No Solar Orbiter HET data from … to …`, as the other spacecraft, instead of `TypeError: list indices must be integers or slices, not str`. In the multi-spacecraft notebook, Solar Orbiter is then left out with this message.
 
 ### Upgrading from 1.1.0
 - Update the installation: `pip install --upgrade "spearhead-vda[notebook]"` (from PyPI), or update the files of the tool for an installation from its folder. The only new dependency is `pooch`, which was already installed with seppy.

@@ -32,6 +32,13 @@ def test_solar_orbiter_load(monkeypatch, tmp_path):
     assert data["electrons"].energies.loc[1].tolist() == [1.0, 1.0]
 
 
+def test_solar_orbiter_without_data(monkeypatch, tmp_path):
+    # as returned by epd_load without data files on SOAR
+    monkeypatch.setattr(observers, "epd_load", lambda **kwargs: ([], [], []))
+    with pytest.raises(ValueError, match="No Solar Orbiter HET data from 2021-09-18 10:00 to 2021-09-18 12:00"):
+        observers.SolarOrbiter().load("het", "2021-09-18 10:00", "2021-09-18 12:00", "sun", str(tmp_path))
+
+
 def test_data_from_the_observer(monkeypatch):
     # the observer data become the columns of the analysis, e.g. H_Flux_2 for proton channel 2
     index = pd.date_range("2021-10-28 14:00", periods=20, freq="1min")
