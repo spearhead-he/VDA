@@ -4,6 +4,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-23
+
 ### Added
 - The release time at the Sun and the time its light reaches 1 AU, as in the VDA plots, in the printed results and in the results table (columns `Release Time (Sun)` and `Release Time (1 AU)`). The printed results give the release time at the Sun with its error, then the times at 1 AU and at the spacecraft (or observer), with the light travel time from the Sun that the latter includes, e.g. `At the spacecraft : 2021-10-28 15:28:41 (+0:06:40 light travel time from the Sun)`. The user guide explains the release times, their error and the band of the plot (see [Results](docs/user_guide.md#results)).
 - `vda.run()`: runs the steps of the analysis in scripts, from the events to the VDA fits, and returns the results. The tables of the steps stay available (e.g. `vda.df_onsets_existing`), and `bg_windows` sets the background window of some events, e.g. `vda.run(bg_windows={2: ("2021-10-28 14:10", "2021-10-28 14:55")})`. The steps can still be run one by one (see [Using the VDA tool without the notebook](docs/library.md#example)).
@@ -238,7 +240,8 @@ All notable changes of the SPEARHEAD VDA tool. The format is based on [Keep a Ch
 
 First release: notebook for the Velocity Dispersion Analysis of Solar Energetic Particle events with Solar Orbiter EPD (HET, EPT) data.
 
-[Unreleased]: https://github.com/spearhead-he/VDA/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/spearhead-he/VDA/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/spearhead-he/VDA/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/spearhead-he/VDA/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/spearhead-he/VDA/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/spearhead-he/VDA/compare/v0.7.0...v0.8.0
