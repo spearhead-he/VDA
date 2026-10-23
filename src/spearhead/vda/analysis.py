@@ -119,14 +119,21 @@ def has_enough_points(inv_betas) -> bool:
 
 def fit_warnings(a: float,
                  b: float,
-                 onset_seconds: np.ndarray) -> list[str]:
-    """Warnings for a VDA fit that is not physical: a negative path length, or a release after the earliest onset"""
+                 onset_seconds: np.ndarray,
+                 t_sun_to_observer: float) -> list[str]:
+    """Warnings for a VDA fit that is not physical: a negative path length, a path length shorter than the distance of
+    the observer from the Sun (light travel time t_sun_to_observer, in seconds), or a release after the earliest onset"""
     if a <= 0:
         return ["the APL is not positive: the onsets do not show a velocity dispersion (the faster particles do not "
                 "arrive first). Check the background windows and the onsets"]
+    warnings = []
+    # the particles travel at least the radial distance from the Sun to the observer
+    if a < t_sun_to_observer:
+        warnings.append(f"the APL ({a / AU_LIGHT_SECONDS:.2f} AU) is shorter than the distance of the observer from the "
+                        f"Sun ({t_sun_to_observer / AU_LIGHT_SECONDS:.2f} AU). Check the background windows and the onsets")
     if b > onset_seconds.min():
-        return ["the release at the Sun is after the earliest onset. Check the background windows and the onsets"]
-    return []
+        warnings.append("the release at the Sun is after the earliest onset. Check the background windows and the onsets")
+    return warnings
 
 
 # Columns of the VDA results: the release time at the Sun, when its light reaches 1 AU and the observer ("Release
@@ -170,7 +177,7 @@ def fit_vda(inv_betas: np.ndarray,
         "APL": a / AU_LIGHT_SECONDS,
         "APL Error": a_error / AU_LIGHT_SECONDS,
     }
-    fit = {"a": a, "b": b, "b_error": b_error, "warnings": fit_warnings(a, b, onset_seconds)}
+    fit = {"a": a, "b": b, "b_error": b_error, "warnings": fit_warnings(a, b, onset_seconds, t_sun_to_observer)}
     return results, fit
 
 

@@ -12,6 +12,7 @@ Sensors without viewings have the single viewing "omni".
 OBSERVERS holds the available observers by name, the values of VDA_parameters.observer.
 """
 import io
+import logging
 import os
 import re
 import shutil
@@ -268,8 +269,16 @@ class SolarOrbiter(Observer):
         return data
 
     def initialize_position(self) -> None:
-        spice.initialize(download_once([f"{self.SPICE_KERNELS_URL}/{kernel}" for kernel in self.SPICE_KERNELS],
-                                       f"{self.label} SPICE kernels"))
+        kernels = download_once([f"{self.SPICE_KERNELS_URL}/{kernel}" for kernel in self.SPICE_KERNELS],
+                                f"{self.label} SPICE kernels")
+        # sunpy logs each of the about 90 frames of the kernels it installs ("Installing ... frame")
+        sunpy_logger = logging.getLogger("sunpy")
+        level = sunpy_logger.level
+        sunpy_logger.setLevel(max(level, logging.WARNING))
+        try:
+            spice.initialize(kernels)
+        finally:
+            sunpy_logger.setLevel(level)
 
     def distance(self, time):
         return spice.get_body("Solar Orbiter", time, spice_frame="SOLO_HEEQ").distance
