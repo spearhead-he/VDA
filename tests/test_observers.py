@@ -349,6 +349,29 @@ def test_spiceypy_logs_only_warnings():
     assert logging.getLogger("spiceypy").level == logging.WARNING
 
 
+def test_solar_orbiter_kernels_without_the_frame_logs(monkeypatch):
+    # sunpy logs each frame it installs, at the INFO level
+    sunpy_logger = logging.getLogger("sunpy")
+
+    def initialize(kernels):
+        sunpy_logger.info("Installing SOLO_STIX_ILS CK frame (-144851) as 'spice_SOLO_STIX_ILS'")
+        sunpy_logger.warning("a warning of sunpy")
+
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    monkeypatch.setattr(observers, "download_once", lambda urls, description: [])
+    monkeypatch.setattr(observers.spice, "initialize", initialize)
+    monkeypatch.setattr(sunpy_logger, "level", logging.INFO)
+    sunpy_logger.addHandler(handler)
+    try:
+        observers.SolarOrbiter().initialize_position()
+    finally:
+        sunpy_logger.removeHandler(handler)
+    assert [r.getMessage() for r in records] == ["a warning of sunpy"]
+    assert sunpy_logger.level == logging.INFO
+
+
 def test_quiet_downloader_error(monkeypatch, tmp_path):
     def no_connection(url, timeout):
         raise OSError("Connection refused")

@@ -7,6 +7,7 @@ import astropy.constants as const
 import astropy.units as u
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytest
 from matplotlib.collections import PathCollection
@@ -192,19 +193,29 @@ def test_vda_fit_needs_two_energies(fixed_spacecraft_distance):
     assert pd.isna(v.results.loc[1, "APL"]) and v.vda_fits == {}
 
 
-@pytest.mark.parametrize("onsets, warning", [
+@pytest.mark.parametrize("onsets, warnings", [
     # later onsets at the higher energies
-    (["2021-10-31 04:20", "2021-10-31 04:00", "2021-10-31 03:40"], "the APL is not positive"),
-    # the line crosses inverse beta 0 at 03:50, after the earliest onset (03:40)
+    (["2021-10-31 04:20", "2021-10-31 04:00", "2021-10-31 03:40"], ["the APL is not positive"]),
+    # 1 minute per inverse beta: an APL of 0.12 AU, at 0.8 AU from the Sun
+    (["2021-10-31 03:01", "2021-10-31 03:02", "2021-10-31 03:03", "2021-10-31 03:04"],
+     ["the APL (0.12 AU) is shorter than the distance of the observer from the Sun (0.80 AU)"]),
+    # the line crosses inverse beta 0 at 03:50, after the earliest onset (03:40), with an APL of 0.72 AU
     (["2021-10-31 04:00", "2021-10-31 04:10", "2021-10-31 03:40", "2021-10-31 04:30"],
-     "the release at the Sun is after the earliest onset"),
+     ["the APL (0.72 AU) is shorter than the distance", "the release at the Sun is after the earliest onset"]),
 ])
-def test_vda_fit_warnings(fixed_spacecraft_distance, capsys, onsets, warning):
+def test_vda_fit_warnings(fixed_spacecraft_distance, capsys, onsets, warnings):
     v = vda_with_onsets(onsets)
     v.compute_vda()
-    assert len(v.vda_fits[1]["warnings"]) == 1 and v.vda_fits[1]["warnings"][0].startswith(warning)
+    assert len(v.vda_fits[1]["warnings"]) == len(warnings)
+    assert all(w.startswith(expected) for w, expected in zip(v.vda_fits[1]["warnings"], warnings))
     v.print_results(1)
-    assert f"    Warning: {warning}" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert all(f"    Warning: {expected}" in out for expected in warnings)
+
+
+def test_vda_fit_apl_of_the_distance_without_warnings():
+    # a path length of the distance of the observer from the Sun (light travel time 400 s)
+    assert analysis.fit_warnings(400.0, 0.0, np.array([400.0, 800.0]), 400.0) == []
 
 
 def test_vda_fit_without_warnings(fixed_spacecraft_distance):
