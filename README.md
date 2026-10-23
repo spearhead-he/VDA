@@ -12,7 +12,7 @@
   - [How to install](#how-to-install)
   - [How to use](#how-to-use)
   - [Example output](#example-output)
-  - [What's new in v1.1.0](#whats-new-in-v110)
+  - [What's new in v1.2.0](#whats-new-in-v120)
   - [Documentation](#documentation)
   - [Contributing](#contributing)
   - [Acknowledgement](#acknowledgement)
@@ -86,10 +86,15 @@ The VDA plots of the notebooks with their default parameters and example data.
 
 <img src="https://raw.githubusercontent.com/spearhead-he/VDA/main/docs/images/vda_custom_points.png" alt="VDA fits of the custom points of the 2024-11-21 event, with reference times" width="700">
 
-## What's new in v1.1.0
+## What's new in v1.2.0
 
-- The folder of the downloaded data files can be chosen, in the Data tab of the multi-event notebook and the Event tab of the multi-spacecraft notebook (parameter `data_path`, by default `particle_data` in the current directory). The files are kept, with a subfolder per spacecraft, so the data of an event are downloaded only once.
-- The Solar Orbiter data files are in their own subfolder (`solo`), as those of the other spacecraft.
+- The release time at the Sun and the time its light reaches 1 AU are given in the printed results, the results table and the VDA plots. The VDA plots have a legend of the symbols and a table of the results, and every fit starts at inverse beta 0.
+- The apparent path length (APL) is in AU. It was too large by the factor 1 / distance of the observer from the Sun.
+- Resampled data are timestamped at the centre of their bins, so the release times are half a bin later (2.5 minutes for the default 5 minutes).
+- Each reference time has an observer (Earth, a spacecraft, or its distance from the Sun in AU), and is shown at the Sun.
+- Warnings for VDA fits that are not physical: an APL that is not positive or is shorter than the distance of the observer from the Sun, or a release after the earliest onset.
+- `vda.run()` runs the analysis in scripts, from the events to the VDA fits.
+- Clearer and quieter messages: errors before the download, one line per event in the data step, and a clear error for Solar Orbiter without data on SOAR.
 
 See the [changelog](https://github.com/spearhead-he/VDA/blob/main/CHANGELOG.md) for all the changes, and how to upgrade from previous versions.
 

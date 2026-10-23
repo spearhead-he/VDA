@@ -21,6 +21,6 @@ logging.getLogger("spiceypy").setLevel(logging.WARNING)
 from .analysis import VDA  # noqa: E402
 from .conf import OnsetSelection, VDA_parameters  # noqa: E402
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = ["VDA", "VDA_parameters", "OnsetSelection", "__version__"]
