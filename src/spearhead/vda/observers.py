@@ -248,6 +248,9 @@ class SolarOrbiter(Observer):
         for particle, df_particle in (("protons", df_protons), ("electrons", df_electrons)):
             if particle not in (particles or self.SENSORS_PARTICLES[sensor]):
                 continue
+            # without data files on SOAR, the loader returns empty lists instead of the data and the energies
+            if not isinstance(df_particle, pd.DataFrame) or len(df_particle) == 0:
+                raise ValueError(f"No {self.label} {sensor.upper()} data from {startdate} to {enddate}")
             flux = df_particle[self.FLUX_COLUMN[sensor][particle]]
             # e.g. "H_Flux_12" is channel 12
             flux = flux.set_axis([int(c.rsplit("_", 1)[1]) for c in flux.columns], axis="columns")
